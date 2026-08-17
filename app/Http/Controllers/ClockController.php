@@ -1,0 +1,391 @@
+<?php
+namespace App\Http\Controllers;
+use DB;
+use Carbon\Carbon;
+use App\Classes\table;
+use App\Classes\permission;
+use App\Http\Requests;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use App\Http\Controllers\Controller;
+use App\Traits\AttendanceShiftHelpers;
+use Auth;
+
+class ClockController extends Controller
+{
+    use AttendanceShiftHelpers;
+
+    public function clock()
+    {
+        $data = table::settings()->where('id', 1)->first();
+        $cc = $data->clock_comment;
+        $tz = $data->timezone;
+        $tf = $data->time_format;
+        $rfid = $data->rfid;
+        $gps = $data->gps;
+
+        return view('clock', compact('cc', 'tz', 'tf', 'rfid', 'gps'));
+    }
+ function personalclock(Request $request){
+    if (permission::permitted('clock-personal')=='fail'){ return redirect()->route('denied'); }
+
+    
+   
+    $data = table::settings()->where('id', 1)->first();
+    $cc = $data->clock_comment;
+    $tz = $data->timezone;
+    $tf = $data->time_format;
+    $rfid = $data->rfid;
+    $gps = $data->gps;
+    // The logged-in employee's own record - this is what lets the
+    // personal page skip "scan your badge / type your ID" entirely and
+    // just show one Time In / Time Out button for THIS person.
+    //$employee  = table::companydata()->where('idno', auth()->user()->idno ?? null)->first();
+    //$idno      = $employee->idno ?? null;
+    //$firstname = auth()->user()->name ?? '';
+    //$lastname  = $employee->lastname ?? '';
+
+    // Adjust this line to however your User model actually relates to
+    // an employee row (e.g. auth()->user()->employee, or a lookup by
+    // auth()->user()->idno against table::people()).
+    $employee  = table::companydata()->where('idno', auth()->user()->idno ?? null)->first();
+
+    $idno      = $employee->idno ?? null;
+    $firstname = auth()->user()->name ?? '';
+    $lastname  = $employee->lastname ?? '';
+
+    return view('personal.clock', compact('cc', 'tz', 'tf', 'rfid', 'gps', 'idno', 'firstname', 'lastname'));
+}
+
+    // ClockController.php
+public function scheduleLookup(Request $request)
+{
+    $idno = strtoupper($request->idno);
+
+    $employee_id = table::companydata()->where('idno', $idno)->value('reference');
+
+    if ($employee_id == null) {
+        return response()->json([
+            "error" => trans("You entered an invalid ID.")
+        ]);
+    }
+
+    // pull whatever schedule data you need here, e.g.:
+    $schedule = table::schedules()->where('reference', $employee_id)->get();
+
+    return response()->json([
+        "schedule" => $schedule
+    ]);
+}
+
+    public function add(Request $request)
+    {
+
+        if ($request->idno == NULL || $request->type == NULL) 
+        {
+            return response()->json([
+                "error" => trans("Please enter your ID.")
+            ]);
+        }
+
+        if(strlen($request->idno) >= 20 || strlen($request->type) >= 20) 
+        {
+            return response()->json([
+                "error" => trans("Invalid Employee ID.")
+            ]);
+        }
+
+        $idno = strtoupper($request->idno);
+        $type = $request->type;
+        $comment = strtoupper($request->clockin_comment);
+        $ip = $request->ip();
+
+        // The single source of truth for "now" - the org's configured
+        // timezone (settings.timezone, e.g. "Europe/London"), not PHP's
+        // ini/global default. This is the fix for clock-ins landing an
+        // hour off: the old code used date('Y-m-d') / date('h:i:s A'),
+        // which silently resolved against whatever timezone PHP itself
+        // defaulted to.
+        $now = $this->orgNow();
+        $date = $now->format('Y-m-d');
+        // Canonical storage format everywhere: 24-hour H:i:s.
+        $time24 = $now->format('H:i:s');
+
+        // GPS location (only present/required if the gps setting is on)
+        $gpsEnabled = table::settings()->value('gps');
+        $latitude   = $request->latitude;
+        $longitude  = $request->longitude;
+
+        if ($gpsEnabled == "on") 
+        {
+            if ($latitude == NULL || $longitude == NULL) 
+            {
+                return response()->json([
+                    "error" => trans("Location access is required to clock in/out. Please allow location permissions and try again.")
+                ]);
+            }
+        }
+
+        // clock-in comment feature
+        $clock_comment = table::settings()->value('clock_comment');
+        $tf = table::settings()->value('time_format');
+        $time_val = $this->formatForDisplay($date." ".$time24, $tf);
+
+        if ($clock_comment == "on") 
+        {
+            if ($comment == NULL) 
+            {
+                return response()->json([
+                    "error" => trans("Please provide your comment!")
+                ]);
+            }
+        }
+
+        // ip resriction
+        $iprestriction = table::settings()->value('iprestriction');
+        if ($iprestriction != NULL) 
+        {
+            $ips = explode(",", $iprestriction);
+
+            if(in_array($ip, $ips) == false) 
+            {
+                $msge = trans("Whoops! You are not allowed to Clock In or Out from your IP address")." ".$ip;
+                return response()->json([
+                    "error" => $msge,
+                ]);
+            }
+        } 
+
+        $employee_id = table::companydata()->where('idno', $idno)->value('reference');
+        
+        if($employee_id == null) {
+            return response()->json([
+                "error" => trans("You enter an invalid ID.")
+            ]);
+        }
+
+        $emp = table::people()->where('id', $employee_id)->first();
+        $lastname = $emp->lastname;
+        $firstname = $emp->firstname;
+        $mi = $emp->mi;
+        $employee = mb_strtoupper($lastname.', '.$firstname.' '.$mi);
+
+        // Weekly rota lookup - same source of truth AttendanceController
+        // uses, so a QR clock-in and a manual entry on the same day
+        // produce the same Rest Day / Late In / Early In status.
+        $shift = $this->resolveShift($idno, $date);
+
+        if ($type == 'timein') 
+        {
+            $has = table::attendance()->where([['idno', $idno],['date', $date]])->exists();
+
+            if ($has == 1) 
+            {
+                $hti = table::attendance()->where([['idno', $idno],['date', $date]])->value('timein');
+                $hti_24 = $this->formatForDisplay($hti, $tf);
+
+                return response()->json([
+                    "employee" => $employee,
+                    "error" => trans("You already Time In today at")." ".$hti_24,
+                ]);
+
+            } else {
+                $last_in_notimeout = table::attendance()->where([['idno', $idno],['timeout', NULL]])->count();
+
+                if($last_in_notimeout >= 1)
+                {
+                    return response()->json([
+                        "error" => trans("Please Clock Out from your last Clock In.")
+                    ]);
+
+                } else {
+
+                    $status_in = 'Ok';
+                    $late_minutes = 0;
+                    $early_in_minutes = 0;
+
+                    if ($shift !== null && $shift['is_off']) {
+                        // Rest day, but they physically clocked in - record
+                        // it and flag it rather than treating it as normal.
+                        $status_in = 'Rest Day';
+                    } elseif ($shift !== null) {
+                        $schedIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$shift['time_in']);
+                        $actualIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$time24);
+
+                        $late = $this->lateStats($schedIn, $actualIn);
+                        $status_in = $late['status'];
+                        $late_minutes = $late['lateMinutes'];
+                        $early_in_minutes = $late['earlyMinutes'];
+                    }
+
+                    $insertData = [
+                        'idno' => $idno,
+                        'reference' => $employee_id,
+                        'date' => $date,
+                        'employee' => $employee,
+                        'timein' => $date." ".$time24,
+                        'status_timein' => $status_in,
+                        'late_minutes' => $late_minutes,
+                        'early_in_minutes' => $early_in_minutes,
+                    ];
+
+                    if ($clock_comment == "on" && $comment != NULL) 
+                    {
+                        $insertData['comment'] = $comment;
+                    }
+
+                    if ($gpsEnabled == "on" && $latitude != NULL && $longitude != NULL) 
+                    {
+                        $insertData['latitude_in'] = $latitude;
+                        $insertData['longitude_in'] = $longitude;
+                    }
+
+                    table::attendance()->insert([$insertData]);
+
+                    return response()->json([
+                        "type" => $type,
+                        "time" => $time_val,
+                        "date" => $date,
+                        "lastname" => $lastname,
+                        "firstname" => $firstname,
+                        "mi" => $mi,
+                    ]);
+                }
+            }
+        }
+  
+        if ($type == 'timeout') 
+        {
+            $timeIN = table::attendance()->where([['idno', $idno], ['timeout', NULL]])->value('timein');
+            $clockInDate = table::attendance()->where([['idno', $idno],['timeout', NULL]])->value('date');
+            $hasout = table::attendance()->where([['idno', $idno],['date', $date]])->value('timeout');
+            // Canonical storage format: 24-hour H:i:s, same as timein.
+            $timeOUT = $date." ".$time24;
+
+            if($timeIN == NULL) 
+            {
+                return response()->json([
+                    "error" => trans("Please Clock In before Clocking Out.")
+                ]);
+            } 
+
+            if ($hasout != NULL) 
+            {
+                $hto = table::attendance()->where([['idno', $idno],['date', $date]])->value('timeout');
+                $hto_24 = $this->formatForDisplay($hto, $tf);
+
+                return response()->json([
+                    "employee" => $employee,
+                    "error" => trans("You already Time Out today at")." ".$hto_24,
+                ]);
+
+            } else {
+
+                // timeIN was stored in canonical "Y-m-d H:i:s" already.
+                $time1 = Carbon::createFromFormat("Y-m-d H:i:s", $timeIN);
+                $time2 = Carbon::createFromFormat("Y-m-d H:i:s", $timeOUT);
+                if ($time2->lessThan($time1)) {
+                    $time2->addDay();
+                }
+
+                // The shift that applies is the one for the day they
+                // clocked IN, not necessarily today (covers overnight
+                // shifts where time-out rolls into the next calendar day).
+                $outShift = $this->resolveShift($idno, $clockInDate);
+
+                $status_out = 'Ok';
+                $early_minutes = 0;
+                $overtime_minutes = 0;
+                $schedIn = null;
+                $effectiveIn = $time1;
+
+                if ($outShift !== null && $outShift['is_off']) {
+                    $status_out = 'Rest Day';
+                } elseif ($outShift !== null) {
+                    $schedIn = Carbon::createFromFormat('Y-m-d H:i:s', $clockInDate.' '.$outShift['time_in']);
+                    $schedOut = Carbon::createFromFormat('Y-m-d H:i:s', $clockInDate.' '.$outShift['time_out']);
+
+                    $out = $this->outStats($schedIn, $schedOut, $time1, $time2);
+                    $status_out = $out['status'];
+                    $early_minutes = $out['earlyMinutes'];
+                    $overtime_minutes = $out['overtimeMinutes'];
+
+                    $effectiveIn = $this->effectiveClockIn($schedIn, $time1);
+                }
+
+                // Total minutes difference, counted from the scheduled
+                // start if they clocked in early.
+                $effectiveOut = $time2->copy();
+                if ($effectiveOut->lessThan($effectiveIn)) {
+                    $effectiveOut->addDay();
+                }
+                $totalMinutes = $effectiveIn->diffInMinutes($effectiveOut);
+
+                // Extract hours & minutes, convert to decimal hours
+                $th = floor($totalMinutes / 60);
+                $tm = $totalMinutes % 60;
+                $totalhour = round($th + ($tm / 60), 2);
+
+                // Calculate pay
+                $totalTodayPay = number_format(
+                    ($totalhour ?? 0) * ($emp->perhourpay ?? 0),
+                    2
+                );
+
+                $updateData = [
+                    'timeout' => $timeOUT,
+                    'totalhours' => $totalhour,
+                    'status_timeout' => $status_out,
+                    'early_minutes' => $early_minutes,
+                    'overtime_minutes' => $overtime_minutes,
+                ];
+
+                if ($gpsEnabled == "on" && $latitude != NULL && $longitude != NULL) 
+                {
+                    $updateData['latitude_out'] = $latitude;
+                    $updateData['longitude_out'] = $longitude;
+                }
+
+                // Save to DB
+                table::attendance()->where([
+                    ['idno', $idno],
+                    ['date', $clockInDate]
+                ])->update($updateData);
+
+                // Calculate salary as a NUMBER
+                $salary = round(($totalhour ?? 0) * ($emp->perhourpay ?? 0), 2);
+
+                // Insert into daily_salaries
+                DB::table('daily_salaries')->insert([
+                    'employee_id'   => $employee_id,
+                    'idno'          => $idno,
+                    'date'          => $clockInDate,
+                    'total_hours'   => $totalhour,
+                    'rate'          => $emp->perhourpay,
+                    'daily_salary'  => $salary,
+                    'status'        => 'Pending',
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+
+                $data = [
+                    'firstname' => $emp->firstname,
+                    'timein'    => $time1,
+                    'timeout'   => $time2,
+                    'totalhour' => $totalhour,
+                    'id'        => $idno,
+                    'totalTodayPay' =>  $totalTodayPay,
+                ];
+
+                return response()->json([
+                    "type" => $type,
+                    "time" => $time_val, 
+                    "date" => $date,
+                    "lastname" => $lastname,
+                    "firstname" => $firstname,
+                    "mi" => $mi,
+                ]);
+            }
+        }
+    }
+}
