@@ -38,7 +38,7 @@ class LoginController extends Controller
                 'status'   => 1
             ];
 
-            if (Auth::attempt($credentials)) {
+            if (Auth::attempt($credentials, $request->boolean('remember'))) {
 
                 $request->session()->regenerate();
 
@@ -90,6 +90,10 @@ class LoginController extends Controller
 
             Auth::loginUsingId($user->id);
 
+            // Same session-fixation protection the email path already
+            // gets - this was missing here before.
+            $request->session()->regenerate();
+
             return $this->redirectUser(Auth::user());
         }
 
@@ -118,13 +122,24 @@ class LoginController extends Controller
                 'last_seen' => now()
             ]);
 
+        // Where each account type lands is fully determined by acc_type -
+        // deliberately NOT using redirect()->intended() here. intended()
+        // pulls a URL out of the session that may have been left there by
+        // a completely different, previously-logged-in account (e.g. a
+        // background request that hit an admin-only route right after
+        // the admin logged out, before this new user logged in). Sending
+        // an employee to that stale admin URL trips the Admin middleware,
+        // force-logs them out, and redirects to "denied" - which looked
+        // like an intermittent bug but was really this session leftover.
+        // A plain redirect() always sends the user to the page that's
+        // actually correct for their account type.
         switch ($user->acc_type) {
 
             case 1:
-                return redirect()->intended('personal/dashboard');
+                return redirect('personal/dashboard');
 
             case 2:
-                return redirect()->intended('dashboard');
+                return redirect('dashboard');
 
             default:
 
@@ -170,7 +185,4 @@ class LoginController extends Controller
     {
         $this->middleware('guest')->except('logout');
     }
-} 
-
-
-
+}
