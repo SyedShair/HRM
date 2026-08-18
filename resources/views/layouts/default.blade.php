@@ -418,9 +418,9 @@
                     </a>
                 </li>
                  <li>
-                    <a href="{{ url('dailysalary') }}" style="color: #64748b;">
-                        <i class="ui icon pound sign" style="color: #64748b;"></i>
-                        <p>{{ __('PayRole') }}</p>
+                    <a href="{{ url('payroll') }}" style="color: #64748b;">
+                        <i class="ui icon money bill alternate outline" style="color: #64748b;"></i>
+                        <p>{{ __('Payroll') }}</p>
                     </a>
                 </li>
                 <li>

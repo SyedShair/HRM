@@ -61,6 +61,15 @@ Class permission {
             151 => 'leavegroup-add',
             152 => 'leavegroup-edit',
             153 => 'leavegroup-delete',
+
+        // Payroll - referenced by PayrollController via
+        // permission::permitted('payroll-view'), ('payroll-generate'),
+        // ('payroll-status'), ('payroll-delete').
+        16 => 'payroll',
+            161 => 'payroll-view',
+            162 => 'payroll-generate',
+            163 => 'payroll-status',
+            164 => 'payroll-delete',
     ];
 
     public static function permitted($page) 

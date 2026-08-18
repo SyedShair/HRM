@@ -45,6 +45,7 @@ use App\Http\Controllers\Personal\PersonalSchedulesController;
 use App\Http\Controllers\Personal\PersonalLeavesController;
 use App\Http\Controllers\Personal\PersonalSettingsController;
 use App\Http\Controllers\Personal\PersonalAccountController;
+use App\Http\Controllers\PayrollController;
 
 use App\Http\Controllers\Auth\LoginController;
 
@@ -81,8 +82,16 @@ Route::post('/chat/message/delete/{id}', [ChatController::class, 'deleteMessage'
 Route::post('/chat/typing', [ChatController::class, 'typing']);
 Route::get('/chat/typing/{id}', [ChatController::class, 'getTyping']);
 
-Route::group(['middleware' => 'auth'], function () {
+// Add near your other authenticated routes in routes/web.php:
 
+
+
+Route::group(['middleware' => 'auth'], function () {
+Route::get('/payroll',                 [PayrollController::class, 'index'])->name('payroll.index');
+    Route::post('/payroll/generate',       [PayrollController::class, 'generate'])->name('payroll.generate');
+    Route::get('/payroll/{id}',            [PayrollController::class, 'show'])->name('payroll.show');
+    Route::post('/payroll/{id}/status',    [PayrollController::class, 'updateStatus'])->name('payroll.status');
+    Route::delete('/payroll/{id}',         [PayrollController::class, 'destroy'])->name('payroll.destroy');
     Route::group(['middleware' => 'checkstatus'], function () {
 
         Route::group(['middleware' => 'admin'], function () {
