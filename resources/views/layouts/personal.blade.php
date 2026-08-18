@@ -364,13 +364,13 @@
 
 </li>
 <li>
-
-    <a href="{{ route('clock.personal') }}" class="chat-menu-link1">
-        <i class="ui icon user outline"></i>
+    <a href="{{ url('personal/clock/attendance') }}">
+        <i class="ui icon clock outline"></i>
         <p>{{ __("Make Attendance") }}</p>
     </a>
+</li>
 
-    </li>
+
 <style>
 
 /* MENU LINK */
@@ -710,7 +710,7 @@
                                     <i class="ui icon linkify"></i> <span class="navmenutext uppercase">{{ __("Quick Access") }}</span>
                                     <i class="dropdown icon"></i>
                                     <div class="menu" tabindex="-1">
-                                      <a href="{{ url('personal/attendance/add') }}" target="_blank" class="item"><i class="ui icon clock outline"></i> {{ __("Clock In/Out") }}</a>
+                                      <a href="{{ url('personal/clock/attendance') }}" target="_blank" class="item"><i class="ui icon clock outline"></i> {{ __("Clock In/Out") }}</a>
                                       <div class="divider"></div>
                                       <a href="{{ url('personal/profile/view') }}" target="_blank" class="item"><i class="ui icon user outline"></i> {{ __("My Profile") }}</a>
                                     </div>

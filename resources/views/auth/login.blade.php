@@ -483,10 +483,13 @@ body{
 
     <!-- BRAND PANEL -->
     <div class="brand-panel">
+@php
+    $logoPath = \App\Classes\table::settings()->value('app_logo');
+@endphp
 
         <div class="brand-top">
             <div class="brand-mark">
-                <img src="{{ asset('/assets/images/img/logo.png') }}" alt="" style="width:22px;height:22px;object-fit:contain;" onerror="this.parentElement.textContent='EP'">
+                <img src="{{ $logoPath ? asset('storage/'.$logoPath) : asset('/assets/images/img/logo.png') }}" alt="{{ __('Logo') }}"  style="width:50px;height:50px;object-fit:contain;" onerror="this.parentElement.textContent='EP'">
             </div>
             <span class="brand-name">Employee Portal</span>
         </div>
