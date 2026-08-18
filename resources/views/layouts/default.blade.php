@@ -42,14 +42,36 @@
         @yield('styles')
 
         <style>
-        :root {
-            --primary: #0f172a;      /* dark navy */
-            --secondary: #14b8a6;    /* teal */
-            --bg: #f8fafc;           /* light background */
-            --card: #ffffff;
-            --border: #e2e8f0;
-            --text: #1e293b;
-        }
+       :root {
+    --bodyColor: #222222;
+    --bodyBg: #fff;
+    --whiteColor: #ffffff;
+    --blackColor: #0A0624;
+    --blackBlue: #13201C;
+    --headingColor: #222222;
+    --contentColor: #5F6C76;
+    --primaryColor: #607570;
+    --secondaryColor: #3E5B54;
+    --greyColor: #EDEDED;
+    --borderColor: #eeeeee;
+    --borderColor2: #D7E1DC;
+    --borderColor3: #ccc;
+    --navyBlue: #3E5B54;
+    --navyBlue2: #2B3D37;
+    --pinkcolor: #EEF3F1;
+    --violet: #7C948E;
+    --yellow: #C9A227;
+    --gradientColor: linear-gradient(90deg, #3E5B54 0%, #4F6B63 47.92%, #607570 100%);
+    --gradientColor2: linear-gradient(180deg, rgba(19, 32, 28, 0.00) 0%, #13201C 100%);
+    --gradientColor3: linear-gradient(90deg, #3E5B54 0%, rgba(255, 255, 255, 0.00) 100%);
+    --borderRadius: 8px;
+    --borderRadius2: 5px;
+    --transition: .3s;
+    --bodyFont: "Inter", sans-serif;
+    --headingFont: "Inter", sans-serif;
+    --contentFont: "Inter", sans-serif;
+    --buttonFont: "Source Sans Pro";
+}
 
             body {
                 background-color: #f8f9fa;
@@ -59,12 +81,12 @@
 
             #sidebar {
                 background: #ffffff;
-                border-right: 1px solid var(--border);
+                border-right: 1px solid var(--borderColor);
             }
 
             #sidebar .sidebar-header {
                 background: #ffffff;
-                border-bottom: 1px solid var(--border);
+                border-bottom: 1px solid var(--borderColor);
             }
 
             #sidebar ul li a {
@@ -73,14 +95,21 @@
 
             #sidebar ul li a:hover,
             #sidebar ul li a:hover i {
-                color: var(--secondary);
-                background: rgba(20,184,166,0.10);
+                color: var(--secondaryColor);
+                background: rgba(96,117,112,0.10);
             }
 
-            #sidebar ul li.active>a,
-            a[aria-expanded="true"] {
-                color: #fff;
-                background: var(--secondary);
+            /* Active / expanded state must beat any inline or default icon
+               color so the highlighted item is actually legible on the
+               dark background. */
+            #sidebar ul li.active > a,
+            #sidebar ul li.active > a i,
+            #sidebar ul li.active > a p,
+            a[aria-expanded="true"],
+            a[aria-expanded="true"] i,
+            a[aria-expanded="true"] .sidebar-caret {
+                color: #fff !important;
+                background: var(--secondaryColor);
             }
 
             #sidebar ul li a i {
@@ -89,7 +118,7 @@
 
             .navbar {
                 background: #0f172a !important;
-                border-bottom: 1px solid var(--border);
+                border-bottom: 1px solid var(--borderColor);
                 position: relative;
                 z-index: 1050;
             }
@@ -111,7 +140,7 @@
             .ui.pointing.dropdown>.menu {
                 margin-top: 0 !important;
                 background: #fff;
-                border: 1px solid var(--border);
+                border: 1px solid var(--borderColor);
                 z-index: 9999 !important;
             }
 
@@ -120,8 +149,8 @@
             }
 
             .ui.dropdown .menu>.item:hover {
-                background: rgba(20,184,166,0.10) !important;
-                color: var(--secondary) !important;
+                background: rgba(96,117,112,0.10) !important;
+                color: var(--secondaryColor) !important;
             }
 
             .navmenutext {
@@ -133,21 +162,21 @@
             }
 
             .page-title {
-                color: var(--secondary);
+                color: var(--secondaryColor);
             }
 
             .box {
                 background: #fff;
-                border: 1px solid var(--border);
+                border: 1px solid var(--borderColor);
             }
 
             .box-header {
-                border-bottom: 1px solid var(--border);
+                border-bottom: 1px solid var(--borderColor);
             }
 
             .box-footer {
                 background-color: #f8f9fa;
-                border-top: 1px solid var(--border);
+                border-top: 1px solid var(--borderColor);
             }
 
             .info-box {
@@ -155,7 +184,7 @@
             }
 
             .bg-aqua {
-                background-color: var(--secondary) !important;
+                background-color: var(--secondaryColor) !important;
             }
 
             .bg-green {
@@ -171,12 +200,12 @@
             }
 
             .ui.menu .active.item {
-                color: var(--secondary) !important;
+                color: var(--secondaryColor) !important;
                 font-weight: normal !important;
             }
 
             .ui.table {
-                border: 1px solid var(--border);
+                border: 1px solid var(--borderColor);
             }
 
             .ui.table thead th {
@@ -185,30 +214,30 @@
             }
 
             .ui.pagination.menu .active.item {
-                background-color: var(--secondary) !important;
+                background-color: var(--secondaryColor) !important;
                 color: #fff !important;
             }
 
             a {
-                color: var(--secondary);
+                color: var(--secondaryColor);
             }
 
             a:hover {
-                color: #0d9488;
+                color: #2B3D37;
             }
 
             .ui.button.primary {
-                background-color: var(--secondary) !important;
+                background-color: var(--secondaryColor) !important;
                 color: #fff !important;
             }
 
             .ui.button.primary:hover {
-                background-color: #0d9488 !important;
+                background-color: #2B3D37 !important;
             }
 
             .ui.form input:focus,
             .ui.form textarea:focus {
-                border-color: var(--secondary) !important;
+                border-color: var(--secondaryColor) !important;
             }
 
             .positive {
@@ -221,7 +250,7 @@
 
             /* Animated gradient navbar */
             .navbar {
-                background: linear-gradient(120deg, #0d9488, var(--secondary), #2dd4bf) !important;
+                background: linear-gradient(120deg, #2B3D37, var(--secondaryColor), var(--primaryColor)) !important;
                 background-size: 220% 220% !important;
                 animation: gradientShift 10s ease infinite;
             }
@@ -339,13 +368,85 @@
         max-height: 55px;
     }
 }
+
+            /* ================================
+               SIDEBAR "QUICK ACCESS" DROPDOWN
+               (Bootstrap collapse - reuses the
+               a[aria-expanded="true"] rule above
+               for the toggle link's own highlight)
+               ================================ */
+
+            .sidebar-dropdown > a {
+                display: flex;
+                align-items: center;
+                width: 100%;
+            }
+
+            .sidebar-dropdown > a .sidebar-caret {
+                margin-left: auto;
+                font-size: 11px !important;
+                transition: transform var(--transition) ease;
+            }
+
+            .sidebar-dropdown > a[aria-expanded="true"] .sidebar-caret {
+                transform: rotate(180deg);
+            }
+
+            ul.sidebar-submenu {
+                background: #f8f9fa;
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                overflow: hidden;
+            }
+
+            ul.sidebar-submenu li a {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 0px 0px 10px !important;
+                font-size: 13px;
+                color: #64748b;
+                text-decoration: none;
+                white-space: nowrap;
+            }
+
+            ul.sidebar-submenu li a i {
+                font-size: 13px !important;
+                color: #64748b;
+                margin: 0 !important;
+                flex: 0 0 16px;
+                text-align: center;
+            }
+
+            ul.sidebar-submenu li a p {
+                margin: 0;
+                text-align: left;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            ul.sidebar-submenu li a:hover,
+            ul.sidebar-submenu li a:hover i {
+                color: var(--secondaryColor);
+                background: rgba(96,117,112,0.10);
+            }
+
+            /* Icon-only collapsed sidebar: the flyout submenu doesn't
+               make sense against a 65px icon rail, so keep the section
+               closed and hide the caret rather than show a broken
+               inline list. */
+            #sidebar.active .sidebar-dropdown > a .sidebar-caret,
+            #sidebar.active ul.sidebar-submenu {
+                display: none;
+            }
         </style>
     </head>
     <body>
 
         <div class="wrapper">
 
-        <nav id="sidebar" class="active" style="background: #ffffff; border-right: 1px solid var(--border);">
+        <nav id="sidebar" class="active" style="background: #ffffff; border-right: 1px solid var(--borderColor);">
            
 <div class="sidebar-header">
     <div class="logo">
@@ -360,81 +461,129 @@
 </div>
             <ul class="list-unstyled components">
                 <li class="">
-                    <a href="{{ url('dashboard') }}" style="color: #64748b;">
-                        <i class="ui icon sliders horizontal" style="color: #64748b;"></i>
+                    <a href="{{ url('dashboard') }}">
+                        <i class="ui icon sliders horizontal"></i>
                         <p>{{ __('Dashboard') }}</p>
                     </a>
                 </li>
-
+ <li class="sidebar-dropdown">
+                    <a href="#quickAccessSubmenu" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
+                        <i class="ui icon linkify"></i>
+                        <p>{{ __('Access Management') }}</p>
+                        <i class="ui icon chevron down sidebar-caret"></i>
+                    </a>
+                    <ul class="collapse list-unstyled sidebar-submenu" id="quickAccessSubmenu">
+                        
+                        <li>
+                            <a href="{{ url('employees/new') }}">
+                                <i class="ui icon user plus"></i>
+                                <p>{{ __('New Employee') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('fields/company') }}">
+                                <i class="ui icon university"></i>
+                                <p>{{ __('Company') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('fields/department') }}">
+                                <i class="ui icon cubes"></i>
+                                <p>{{ __('Department') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('fields/jobtitle') }}">
+                                <i class="ui icon pencil alternate"></i>
+                                <p>{{ __('Job Title') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('fields/leavetype') }}">
+                                <i class="ui icon calendar alternate outline"></i>
+                                <p>{{ __('Leave Type') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('clock') }}" target="_blank" rel="noopener noreferrer">
+                                <i class="ui icon clock outline"></i>
+                                <p>{{ __('Clock In/Out') }}</p>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
                 <li class="">
-                    <a href="{{ url('employees') }}" style="color: #64748b;">
-                        <i class="ui icon users" style="color: #64748b;"></i>
+                    <a href="{{ url('employees') }}">
+                        <i class="ui icon users"></i>
                         <p>{{ __('Employees') }}</p>
                     </a>
                 </li>
 
                 <li class="">
-                    <a href="{{ url('attendance') }}" style="color: #64748b;">
-                        <i class="ui icon clock outline" style="color: #64748b;"></i>
+                    <a href="{{ url('attendance') }}">
+                        <i class="ui icon clock outline"></i>
                         <p>{{ __('Attendances') }}</p>
                     </a>
                 </li>
 
                 <li class="">
-                    <a href="{{ url('schedules') }}" style="color: #64748b;">
-                        <i class="ui icon calendar alternate outline" style="color: #64748b;"></i>
+                    <a href="{{ url('schedules') }}">
+                        <i class="ui icon calendar alternate outline"></i>
                         <p>{{ __('Schedules') }}</p>
                     </a>
                 </li>
                 <li class="">
-                    <a href="{{ url('staff-rota') }}" style="color: #64748b;">
-                        <i class="ui icon clipboard list" style="color: #64748b;"></i>
+                    <a href="{{ url('staff-rota') }}">
+                        <i class="ui icon clipboard list"></i>
                         <p>{{ __('Staff Rota') }}</p>
                     </a>
                 </li>
                 <li class="">
-                    <a href="{{ url('today-shifts') }}" style="color: #64748b;">
-                        <i class="ui icon clock outline" style="color: #64748b;"></i>
+                    <a href="{{ url('today-shifts') }}">
+                        <i class="ui icon clock outline"></i>
                         <p>{{ __('Today Shifts') }}</p>
                     </a>
                 </li>
 
                 <li class="">
-                    <a href="{{ url('leaves') }}" style="color: #64748b;">
-                        <i class="ui icon calendar plus outline" style="color: #64748b;"></i>
+                    <a href="{{ url('leaves') }}">
+                        <i class="ui icon calendar plus outline"></i>
                         <p>{{ __('Leave') }}</p>
                     </a>
                 </li>
                 <li class="">
-                    <a href="{{ url('reports') }}" style="color: #64748b;">
-                        <i class="ui icon chart bar outline" style="color: #64748b;"></i>
+                    <a href="{{ url('reports') }}">
+                        <i class="ui icon chart bar outline"></i>
                         <p>{{ __('Reports') }}</p>
                     </a>
                 </li>
                 <li>
-                    <a href="{{ url('users') }}" style="color: #64748b;">
-                        <i class="ui icon user circle outline" style="color: #64748b;"></i>
+                    <a href="{{ url('users') }}">
+                        <i class="ui icon user circle outline"></i>
                         <p>{{ __('Users') }}</p>
                     </a>
                 </li>
-                 <li>
-                    <a href="{{ url('payroll') }}" style="color: #64748b;">
-                        <i class="ui icon money bill alternate outline" style="color: #64748b;"></i>
+
+               
+
+                <li>
+                    <a href="{{ url('payroll') }}">
+                        <i class="ui icon money bill alternate outline"></i>
                         <p>{{ __('Payroll') }}</p>
                     </a>
                 </li>
                 <li>
-                    <a href="{{ route('chat') }}" class="chat-menu-link1" style="color: #64748b;">
+                    <a href="{{ route('chat') }}" class="chat-menu-link1">
                         <div class="chat-icon-wrapper1">
-                            <i class="ui comments icon" style="color: #64748b;"></i>
+                            <i class="ui comments icon"></i>
                             <span class="chat-notification-badge chat-badge1 chat-unread-badge" style="display:none;"> </span>
                         </div>
                         <span class="chat-text1">{{ __('Chat') }}</span>
                     </a>
                 </li>
                 <li>
-                    <a href="{{ url('settings') }}" style="color: #64748b;">
-                        <i class="ui icon cog" style="color: #64748b;"></i>
+                    <a href="{{ url('settings') }}">
+                        <i class="ui icon cog"></i>
                         <p>{{ __('Settings') }}</p>
                     </a>
                 </li>
@@ -553,7 +702,7 @@
         </style>
 
         <div id="body" class="active">
-            <nav class="navbar navbar-expand-lg navbar-light" style="border-bottom: 1px solid var(--border); position: relative; z-index: 1050;">
+            <nav class="navbar navbar-expand-lg navbar-light" style="border-bottom: 1px solid var(--borderColor); position: relative; z-index: 1050;">
                 <div class="container-fluid">
 
                     <button type="button" id="slidesidebar" class="ui icon button btn-light-outline" style="color: #fff !important; box-shadow: 0 0 0 1px rgba(255,255,255,0.5) inset !important;">
@@ -575,7 +724,7 @@
                                 <div class="ui pointing link dropdown item" tabindex="0" style="color: #fff;">
                                     <i class="ui icon flag" style="color: #fff;"></i> <span class="navmenutext uppercase" style="color: #fff;">{{ config('app.locale', 'en') }}</span>
                                     <i class="dropdown icon" style="color: #fff;"></i>
-                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--border);">
+                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--borderColor);">
                                       <a href="{{ url('lang/en') }}" class="item" style="color: #495057 !important;"><i class="flag-icon flag-icon-us"></i>English</a>
                                       <a href="{{ url('lang/es') }}" class="item" style="color: #495057 !important;"><i class="flag-icon flag-icon-es"></i>Español</a>
                                       <a href="{{ url('lang/fr') }}" class="item" style="color: #495057 !important;"><i class="flag-icon flag-icon-fr"></i>Français</a>
@@ -595,7 +744,7 @@
                                 <div class="ui pointing link dropdown item" tabindex="0" style="color: #fff;">
                                     <i class="ui icon linkify" style="color: #fff;"></i> <span class="navmenutext uppercase" style="color: #fff;">{{ __('Quick Access') }}</span>
                                     <i class="dropdown icon" style="color: #fff;"></i>
-                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--border);">
+                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--borderColor);">
                                       <a href="{{ url('clock') }}" target="_blank" rel="noopener noreferrer" class="item" style="color: #495057 !important;"><i class="ui icon clock outline"></i>{{ __('Clock In/Out') }}</a>
                                       <div class="divider"></div>
                                       <a href="{{ url('employees/new') }}" class="item" style="color: #495057 !important;"><i class="ui icon user plus"></i>{{ __('New Employee') }}</a>
@@ -611,7 +760,7 @@
                                <div class="ui pointing link dropdown item" tabindex="0" style="color: #fff;">
                                     <i class="ui icon user outline" style="color: #fff;"></i> <span class="navmenutext" style="color: #fff;">@isset(Auth::user()->name){{ Auth::user()->name }}@endisset</span>
                                     <i class="dropdown icon" style="color: #fff;"></i>
-                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--border);">
+                                    <div class="menu" tabindex="-1" style="background: #fff; border: 1px solid var(--borderColor);">
                                       <a href="{{ url('update-profile') }}" class="item" style="color: #495057 !important;"><i class="ui icon user"></i>{{ __('Update Account') }}</a>
                                       <a href="{{ url('update-password') }}" class="item" style="color: #495057 !important;"><i class="ui icon lock"></i>{{ __('Change Password') }}</a>
                                       <a href="{{ url('personal/dashboard') }}" target="_blank" rel="noopener noreferrer" class="item" style="color: #495057 !important;"><i class="ui icon sign-in"></i>{{ __('Switch to MyAccount') }}</a>
@@ -667,6 +816,24 @@
             on: 'click',
             action: 'activate'
         });
+    });
+    </script>
+
+    {{--
+        Sidebar "Quick Access" collapse - keeps the toggle link's
+        aria-expanded attribute in sync (needed for the caret rotation
+        and highlight CSS) since this markup uses Bootstrap's collapse
+        plugin rather than Semantic UI here.
+    --}}
+    <script>
+    $(document).ready(function () {
+        $('#quickAccessSubmenu')
+            .on('show.bs.collapse', function () {
+                $('a[href="#quickAccessSubmenu"]').attr('aria-expanded', 'true');
+            })
+            .on('hide.bs.collapse', function () {
+                $('a[href="#quickAccessSubmenu"]').attr('aria-expanded', 'false');
+            });
     });
     </script>
 
