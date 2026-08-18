@@ -14,16 +14,16 @@
 <style>
 
 :root{
-    --brand-900:#0b1b34;
-    --brand-800:#122a4d;
-    --brand-700:#1a3a68;
-    --brand-600:#22528f;
-    --accent:#2f6fed;
-    --accent-dark:#2158c4;
-    --ink:#0f172a;
-    --muted:#64748b;
-    --border:#e2e8f0;
-    --bg:#f5f7fb;
+    --brand-900:#13201C;
+    --brand-800:#2B3D37;
+    --brand-700:#3E5B54;
+    --brand-600:#3E5B54;
+    --accent:#607570;
+    --accent-dark:#3E5B54;
+    --ink:#222222;
+    --muted:#5F6C76;
+    --border:#eeeeee;
+    --bg:#3E5B54;
     --danger:#dc2626;
     --success:#16a34a;
 }
@@ -320,7 +320,7 @@ body{
     outline:none;
     background:#fff;
     border-color:var(--accent);
-    box-shadow:0 0 0 3px rgba(47,111,237,0.12);
+    box-shadow:0 0 0 3px rgba(96,117,112,0.12);
 }
 
 .form-control:focus ~ i,
@@ -380,7 +380,7 @@ body{
 
 .login-btn:hover{
     background:var(--accent-dark);
-    box-shadow:0 6px 16px rgba(47,111,237,0.28);
+    box-shadow:0 6px 16px rgba(96,117,112,0.28);
 }
 
 .login-btn:active{
