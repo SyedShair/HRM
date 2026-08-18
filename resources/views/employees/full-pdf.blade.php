@@ -181,9 +181,13 @@
 </style>
 </head>
 <body>
-
+    <div class="brand-panel">
+@php
+    $logoPath = \App\Classes\table::settings()->value('app_logo');
+    $company = \App\Classes\table::settings()->value('app_name');
+@endphp
 <div class="watermark">
-    <img src="https://www.jpingos.com/wp-content/uploads/2025/03/image-2-Photoroom.png">
+    <img src="{{ $logoPath ? asset('storage/'.$logoPath) : asset('/assets/images/img/logo.png') }}" alt="{{ __('Logo') }}">
 </div>
 
 <div class="container">
@@ -203,14 +207,13 @@
                      alt="profile photo"/>
             @endif
 
-            <img class="logo"
-                 src="https://www.jpingos.com/wp-content/uploads/2025/03/image-2-Photoroom.png">
+           
 
         </div>
 
         <div class="header-center">
             <div class="report-title">Employee Profile</div>
-            <div class="business-name">JPINGOS FLAME AND GRILLE</div>
+            <div class="business-name">{{ $company }}</div>
         </div>
 
         <div class="header-right">

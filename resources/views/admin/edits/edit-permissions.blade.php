@@ -171,6 +171,40 @@
                                         </div>
                                     </div>
 
+                                    <h3 class="ui sub header">{{ __("Payroll") }}</h3>
+                                    <div class="item">
+                                        <div class="ui master checkbox">
+                                            <input type="checkbox" @isset($d) @if(in_array('16', $d)==true) checked @endif @endisset name="perms[]" value="16">
+                                            <label>{{ __("Open Payroll page") }}</label>
+                                        </div>
+                                        <div class="list">
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('161', $d)==true) checked @endif @endisset name="perms[]" value="161">
+                                                    <label>{{ __("View Payroll / Payslips") }}</label>
+                                                </div>
+                                            </div>
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('162', $d)==true) checked @endif @endisset name="perms[]" value="162">
+                                                    <label>{{ __("Generate Payroll") }}</label>
+                                                </div>
+                                            </div>
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('163', $d)==true) checked @endif @endisset name="perms[]" value="163">
+                                                    <label>{{ __("Update Payroll Status") }}</label>
+                                                </div>
+                                            </div>
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('164', $d)==true) checked @endif @endisset name="perms[]" value="164">
+                                                    <label>{{ __("Delete Payroll entry") }}</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <h3 class="ui sub header">{{ __("Reports") }}</h3>
                                     <div class="item">
                                         <div class="ui master checkbox">

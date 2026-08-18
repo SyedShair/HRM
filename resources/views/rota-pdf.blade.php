@@ -72,6 +72,9 @@
     </style>
 </head>
 <body>
+   <!-- set dynamic logo -->
+    
+
 <img class="logo"
                  src="https://www.jpingos.com/wp-content/uploads/2025/03/image-2-Photoroom.png">
 

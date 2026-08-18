@@ -96,17 +96,20 @@
 </head>
 
 <body>
-
-<img src="https://www.jpingos.com/wp-content/uploads/2025/03/image-2-Photoroom.png" class="watermark">
+@php
+                    $app = \App\Classes\table::settings()->value('app_name');
+                    $logoPath = \App\Classes\table::settings()->value('app_logo');
+@endphp
 
 <!-- HEADER -->
 <div class="top-bar">
     <table>
         <tr>
             <td>
-                <img src="https://www.jpingos.com/wp-content/uploads/2025/03/image-2-Photoroom.png" class="logo">
+<td class="company-name">{{ $app }}</td>
             </td>
-            <td class="company-name">JPINGOS FLAME GRILLE</td>
+             
+            
             <td class="report-title">Weekly Shift Rota</td>
         </tr>
     </table>
