@@ -24,7 +24,7 @@ class EmployeeDocumentController extends Controller
             'National Insurance'               => ['national insurance', 'ni number', 'ni proof', ' ni '],
             'Proof of Address'                 => ['proof of address', 'utility bill', 'bank statement', 'council tax'],
             'P45 / Starter Checklist'          => ['p45', 'starter checklist', 'hmrc starter'],
-            'Bank Details'                     => ['bank detail', 'bank account', 'sort code'],
+            'Bank Details'                     => ['bank detail','bank statement' ,'bank account', 'sort code'],
             'Signed Employment Contract'       => ['contract', 'employment contract', 'offer letter'],
             'Emergency Contact / Next of Kin'  => ['emergency contact', 'next of kin', 'kin'],
         ];
@@ -84,62 +84,163 @@ class EmployeeDocumentController extends Controller
      * Details, Signed Contract) still requires an uploaded document,
      * matched by document_type_id with a legacy keyword fallback.
      */
-    protected function buildRequiredDocumentsChecklist($employee, $company, $documents, $documentTypes)
-    {
-        $legacyMap = $this->legacyKeywordMap();
-        $checklist = [];
+//     protected function buildRequiredDocumentsChecklist($employee, $company, $documents, $documentTypes)
+// {
+//     $legacyMap = $this->legacyKeywordMap();
+//     $checklist = [];
 
-        foreach ($documentTypes as $type) {
+//     foreach ($documentTypes as $type) {
 
-            $profileCheck = $this->profileFieldCheck($type->label, $employee, $company);
+//         // 1. First check: is there an uploaded document explicitly
+//         //    tagged with this type's document_type_id?
+//         $match = $documents->first(function ($doc) use ($type) {
+//             return (int) ($doc->document_type_id ?? 0) === (int) $type->id;
+//         });
 
-            if ($profileCheck !== null) {
-                [$found, $displayValue] = $profileCheck;
+//         // 2. Fallback: for documents with no type set at all (old
+//         //    uploads, or "Other/Not Listed"), try to match by keyword
+//         //    in the file name.
+//         if (!$match && isset($legacyMap[$type->label])) {
+//             $keywords = $legacyMap[$type->label];
 
-                $checklist[] = [
-                    'label'        => $type->label,
-                    'required'     => (bool) $type->is_required,
-                    'found'        => $found,
-                    'matched_file' => $displayValue,
-                    'source'       => 'profile',
-                ];
+//             $match = $documents->first(function ($doc) use ($keywords) {
+//                 if (!empty($doc->document_type_id)) {
+//                     return false;
+//                 }
+//                 $name = strtolower($doc->file_name ?? '');
+//                 foreach ($keywords as $keyword) {
+//                     if ($name !== '' && strpos($name, $keyword) !== false) {
+//                         return true;
+//                     }
+//                 }
+//                 return false;
+//             });
+//         }
 
-                continue;
-            }
+//         // 3. Also check the profile field, if this type has one.
+//         $profileCheck = $this->profileFieldCheck($type->label, $employee, $company);
+//         $profileFilled = false;
+//         $profileValue  = null;
 
-            // Otherwise, fall back to document-upload based matching
-            $match = $documents->first(function ($doc) use ($type) {
-                return (int) ($doc->document_type_id ?? 0) === (int) $type->id;
-            });
+//         if ($profileCheck !== null) {
+//             [$profileFilled, $profileValue] = $profileCheck;
+//         }
 
-            if (!$match && isset($legacyMap[$type->label])) {
-                $keywords = $legacyMap[$type->label];
+//         // 4. Found if EITHER an uploaded doc matches OR the profile
+//         //    field is filled. Prefer the document as evidence when
+//         //    both exist, since it's more specific/verifiable.
+//         $found = $match !== null || $profileFilled;
 
-                $match = $documents->first(function ($doc) use ($keywords) {
-                    if (!empty($doc->document_type_id)) {
-                        return false;
-                    }
-                    $name = strtolower($doc->file_name ?? '');
-                    foreach ($keywords as $keyword) {
-                        if ($name !== '' && strpos($name, $keyword) !== false) {
-                            return true;
-                        }
-                    }
+//         if ($match !== null) {
+//             $matchedFile = $match->file_name;
+//             $source = 'document';
+//         } elseif ($profileFilled) {
+//             $matchedFile = $profileValue;
+//             $source = 'profile';
+//         } else {
+//             $matchedFile = null;
+//             $source = $profileCheck !== null ? 'profile' : 'document';
+//         }
+
+//         $checklist[] = [
+//             'label'        => $type->label,
+//             'required'     => (bool) $type->is_required,
+//             'found'        => $found,
+//             'matched_file' => $matchedFile,
+//             'source'       => $source,
+//         ];
+//     }
+
+//     return $checklist;
+// }
+protected function buildRequiredDocumentsChecklist($employee, $company, $documents, $documentTypes)
+{
+    $legacyMap = $this->legacyKeywordMap();
+    $checklist = [];
+
+    foreach ($documentTypes as $type) {
+
+        // 1. Exact type match: a document explicitly tagged with this
+        //    type's document_type_id.
+        $match = $documents->first(function ($doc) use ($type) {
+            return (int) ($doc->document_type_id ?? 0) === (int) $type->id;
+        });
+
+        // 2. Legacy keyword fallback: untyped documents, matched by
+        //    keyword against the known keyword map.
+        if (!$match && isset($legacyMap[$type->label])) {
+            $keywords = $legacyMap[$type->label];
+
+            $match = $documents->first(function ($doc) use ($keywords) {
+                if (!empty($doc->document_type_id)) {
                     return false;
-                });
-            }
-
-            $checklist[] = [
-                'label'        => $type->label,
-                'required'     => (bool) $type->is_required,
-                'found'        => $match !== null,
-                'matched_file' => $match->file_name ?? null,
-                'source'       => 'document',
-            ];
+                }
+                $name = strtolower($doc->file_name ?? '');
+                foreach ($keywords as $keyword) {
+                    if ($name !== '' && strpos($name, $keyword) !== false) {
+                        return true;
+                    }
+                }
+                return false;
+            });
         }
 
-        return $checklist;
+        // 3. NEW: filename-vs-label fallback. Catches documents whose
+        //    file name clearly names this type directly (e.g. a file
+        //    named "Bank Statement.pdf" satisfying the "Bank Statement"
+        //    type), even if it was uploaded under a different/blank
+        //    document_type_id. Runs regardless of whether the doc has
+        //    a document_type_id set, since the file name is explicit
+        //    evidence on its own.
+        if (!$match) {
+            $labelLower = strtolower($type->label);
+            // strip bracketed qualifiers like "(Share Code)" so
+            // "Right to Work" still matches "Right to Work.pdf"
+            $labelCore = trim(preg_replace('/\s*\(.*?\)\s*/', ' ', $labelLower));
+
+            $match = $documents->first(function ($doc) use ($labelLower, $labelCore) {
+                $name = strtolower($doc->file_name ?? '');
+                if ($name === '') {
+                    return false;
+                }
+                return strpos($name, $labelLower) !== false
+                    || ($labelCore !== '' && strpos($name, $labelCore) !== false);
+            });
+        }
+
+        // 4. Profile field check, if this type has one.
+        $profileCheck = $this->profileFieldCheck($type->label, $employee, $company);
+        $profileFilled = false;
+        $profileValue  = null;
+
+        if ($profileCheck !== null) {
+            [$profileFilled, $profileValue] = $profileCheck;
+        }
+
+        $found = $match !== null || $profileFilled;
+
+        if ($match !== null) {
+            $matchedFile = $match->file_name;
+            $source = 'document';
+        } elseif ($profileFilled) {
+            $matchedFile = $profileValue;
+            $source = 'profile';
+        } else {
+            $matchedFile = null;
+            $source = $profileCheck !== null ? 'profile' : 'document';
+        }
+
+        $checklist[] = [
+            'label'        => $type->label,
+            'required'     => (bool) $type->is_required,
+            'found'        => $found,
+            'matched_file' => $matchedFile,
+            'source'       => $source,
+        ];
     }
+
+    return $checklist;
+}
 
     /**
      * FIX: file_path values are now tagged so every downstream consumer
