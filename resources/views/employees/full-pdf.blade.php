@@ -186,10 +186,28 @@
     $logoPath = \App\Classes\table::settings()->value('app_logo');
     $company = \App\Classes\table::settings()->value('app_name');
 @endphp
-<div class="watermark">
-    <img src="{{ $logoPath ? asset('storage/'.$logoPath) : asset('/assets/images/img/logo.png') }}" alt="{{ __('Logo') }}">
-</div>
 
+@php
+    $appSettings = \App\Classes\table::settings()
+        ->where('id', 1)
+        ->first();
+
+    $appName = !empty($appSettings?->app_name)
+        ? $appSettings->app_name
+        : 'Company';
+
+    if (!empty($appSettings?->app_logo)) {
+        $appLogo = str_starts_with($appSettings->app_logo, 'http')
+            ? $appSettings->app_logo
+            : asset('storage/' . ltrim($appSettings->app_logo, '/'));
+    } else {
+        $appLogo = asset('/assets/images/img/logo.png');
+    }
+@endphp
+
+<div class="watermark">
+    <img src="{{ $appLogo }}" alt="{{ $appName }}">
+</div>
 <div class="container">
 
     <!-- HEADER -->
@@ -199,7 +217,7 @@
 
             @if($employee->avatar != null)
                 <img class="avatar"
-                     src="{{ asset('/assets/faces/'.$employee->avatar) }}"
+                     src="{{ asset('storage/'.$employee->avatar) }}"
                      alt="profile photo"/>
             @else
                 <img class="avatar"
