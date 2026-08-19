@@ -1,7 +1,17 @@
 @extends('layouts.default')
-
+ @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
     @section('meta')
-        <title>General Settings | Jpingos</title>
+        <title>General Settings | {{ $appName }}</title>
         <meta name="description" content="Workday settings, view and update system settings.">
     @endsection 
     

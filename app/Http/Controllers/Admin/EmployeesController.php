@@ -151,6 +151,7 @@ class EmployeesController extends Controller
 		if (!table::company()->where('id', $request->company_id)->exists()) {
 			return redirect('employee-new')->withInput()->with('error', trans('Selected company is invalid.'));
 		}
+		
 		$companyRow = table::company()->where('id', $request->company_id)->first();
 		$company = mb_strtoupper($companyRow->company);
 	  
@@ -167,6 +168,12 @@ class EmployeesController extends Controller
 		$birthday = date("Y-m-d", strtotime($request->birthday));
 		$nationalid = mb_strtoupper($request->nationalid);
 		$sharecode = $request->sharecode;
+		if($request->sharecode !=null){
+			$sharecodeexpiry = date("Y-m-d", strtotime($request->sharecodeexpiry));
+		}
+		else{
+			return redirect('employees-new')->with('error', trans("Whoops! Share Code is required if Share Code Expiry Date is provided."));
+		}
 		$ni=$request->ni;
 		$birthplace = mb_strtoupper($request->birthplace);
 		$homeaddress = mb_strtoupper($request->homeaddress);
@@ -221,7 +228,7 @@ class EmployeesController extends Controller
 		try {
 			DB::transaction(function () use (
 				$lastname, $firstname, $mi, $age, $gender, $emailaddress, $civilstatus,
-				$mobileno, $birthday, $birthplace, $nationalid, $sharecode, $ni,
+				$mobileno, $birthday, $birthplace, $nationalid, $sharecode, $sharecodeexpiry, $ni,
 				$homeaddress, $employmenttype, $employmentstatus, $avatarPath,
 				$company, $department, $jobposition, $companyemail, $leaveprivilege,
 				$idno, $startdate, $dateregularized, $addressEntries, $request, &$refId
@@ -241,6 +248,7 @@ class EmployeesController extends Controller
 						'birthplace' => $birthplace,
 						'nationalid' => $nationalid,
 						'sharecode' => $sharecode,
+						'sharecode_expires_at' => $sharecodeexpiry,
 						'NI' => $ni,
 						'idissuedate'=>$request->idissuedate,
 						'idexpirydate'=>$request->idexpirydate,

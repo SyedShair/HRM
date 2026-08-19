@@ -1,7 +1,17 @@
 @extends('layouts.default')
-
+ @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
 @section('meta')
-    <title>Employees | Jpingos</title>
+    <title>Employees | {{ $appName }}</title>
     <meta name="description" content="Workday employees management system">
 @endsection
 
@@ -123,10 +133,11 @@ $expiring = collect($data ?? [])->filter(function ($e) {
                         <th>Company</th>
                         <th>Department</th>
                         <th>Position</th>
+                        <th>Share Code</th>
                         <th>Passport</th>
                         <th>Visa Expiry</th>
                         <th>Status</th>
-                        <th></th>
+                        <th>Actions</th>
                     </tr>
                     </thead>
 
@@ -169,6 +180,24 @@ $expiring = collect($data ?? [])->filter(function ($e) {
                                     $passportDays = $passportDiff->d;
                                 }
                             }
+
+ $sharecodeExpiry = null;
+    $sharecodeExpired = false;
+    $sharecodeDaysLeft = null;
+
+    if (!empty($employee->sharecode_expires_at)) {
+        try {
+            $sharecodeExpiry = Carbon::parse($employee->sharecode_expires_at);
+
+            $sharecodeDaysLeft = (int) $now->diffInDays($sharecodeExpiry, false);
+
+            if ($sharecodeDaysLeft < 0) {
+                $sharecodeExpired = true;
+            }
+        } catch (\Exception $e) {
+            $sharecodeExpiry = null;
+        }
+    }
                         @endphp
 
                         <tr class="{{ ($diffDays !== null && $diffDays <= 90 && $diffDays > 0) ? 'expiring-row' : '' }}">
@@ -178,6 +207,79 @@ $expiring = collect($data ?? [])->filter(function ($e) {
                             <td>{{ $employee->company }}</td>
                             <td>{{ $employee->department }}</td>
                             <td>{{ $employee->jobposition }}</td>
+ <td>
+    @if(empty($employee->sharecode))
+
+        {{-- NO SHARE CODE --}}
+        <span class="ui grey label">
+            No Share Code
+        </span>
+
+        
+    @elseif(!$sharecodeExpiry)
+
+        {{-- SHARE CODE EXISTS BUT NO EXPIRY DATE --}}
+        <div>
+            <strong>{{ $employee->sharecode }}</strong>
+        </div>
+
+        <div style="margin-top: 5px;">
+            <span class="ui orange label">
+                Expiry Not Set
+            </span>
+        </div>
+
+       
+
+    @elseif($sharecodeExpired)
+
+        {{-- EXPIRED --}}
+        <div>
+            <span class="ui red label">
+                Share Code Expired
+            </span>
+        </div>
+
+        
+
+    @else
+
+        {{-- VALID SHARE CODE --}}
+        <div>
+            <strong>{{ $employee->sharecode }}</strong>
+        </div>
+
+        <div style="margin-top: 5px;">
+
+            @if($sharecodeDaysLeft > 30)
+
+                <span class="ui green label">
+                    {{ $sharecodeDaysLeft }} days left
+                </span>
+
+            @elseif($sharecodeDaysLeft > 14)
+
+                <span class="ui yellow label">
+                    {{ $sharecodeDaysLeft }} days left
+                </span>
+
+            @else
+
+                <span class="ui red label">
+                    {{ $sharecodeDaysLeft }} days left
+                </span>
+
+            @endif
+
+        </div>
+
+        {{-- SAFE: only executed when $sharecodeExpiry exists --}}
+        <div style="font-size: 11px; color: #777; margin-top: 3px;">
+            Expires {{ $sharecodeExpiry->format('d M Y') }}
+        </div>
+
+    @endif
+</td>
 
                             <!-- PASSPORT (nationalid) + expiry countdown -->
                             <td>
@@ -262,6 +364,7 @@ $expiring = collect($data ?? [])->filter(function ($e) {
                                 </button>
 
                             </td>
+                         
 
                         </tr>
 

@@ -13,33 +13,42 @@ $days = [
 @endphp
 
 @extends('layouts.default')
-
+ @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
 @section('meta')
-    <title>Today Shifts | Jpingos</title>
+    <title>Today Shifts | {{ $appName }}</title>
 @endsection
 
 @section('content')
 <style>
-
 :root{
 
-    --primary:#06b6d4;
-    --primary-dark:#0891b2;
-    --secondary:#8b5cf6;
-    --success:#22c55e;
-    --danger:#ef4444;
-    --warning:#f59e0b;
+    --primary:#607570;
+    --primary-dark:#3E5B54;
+    --secondary:#7C948E;
+    --success:#3E5B54;
+    --danger:#c0392b;
+    --warning:#C9A227;
 
-    --bg:#f0f9ff;
+    --bg:#EEF3F1;
     --white:#ffffff;
-    --dark:#0f172a;
-    --gray:#64748b;
-    --border:#dbeafe;
+    --dark:#0A0624;
+    --gray:#5F6C76;
+    --border:#D7E1DC;
 
-    --morning:#fbbf24;
-    --day:#38bdf8;
-    --evening:#a855f7;
-    --night:#334155;
+    --morning:#C9A227;
+    --day:#607570;
+    --evening:#7C948E;
+    --night:#2B3D37;
 
 }
 
@@ -53,8 +62,8 @@ body{
 
     font-family:'Poppins',sans-serif;
     background:
-        radial-gradient(circle at top left,#cffafe,#f0f9ff),
-        radial-gradient(circle at bottom right,#ddd6fe,#f8fafc);
+        radial-gradient(circle at top left,#EDEDED,#EEF3F1),
+        radial-gradient(circle at bottom right,#D7E1DC,#f8fafc);
 
     min-height:100vh;
     color:var(--dark);
@@ -69,7 +78,7 @@ body::before{
     position:fixed;
     width:500px;
     height:500px;
-    background:rgba(14,165,233,0.15);
+    background:rgba(96,117,112,0.15);
     border-radius:50%;
     top:-150px;
     right:-150px;
@@ -83,7 +92,7 @@ body::after{
     position:fixed;
     width:400px;
     height:400px;
-    background:rgba(168,85,247,0.12);
+    background:rgba(124,148,142,0.12);
     border-radius:50%;
     bottom:-150px;
     left:-100px;
@@ -126,7 +135,7 @@ main{
 
 .rota-head{
 
-    background:linear-gradient(135deg,#06b6d4,#8b5cf6);
+    background:linear-gradient(135deg,#3E5B54,#607570);
     color:white;
 
     padding:30px;
@@ -140,7 +149,7 @@ main{
     margin-bottom:25px;
 
     box-shadow:
-        0 10px 40px rgba(6,182,212,0.3);
+        0 10px 40px rgba(62,91,84,0.3);
 
     animation:fadeDown 0.8s ease;
 }
@@ -175,7 +184,7 @@ main{
 .live-badge{
 
     background:white;
-    color:#06b6d4;
+    color:#3E5B54;
     padding:12px 20px;
     border-radius:50px;
     font-weight:700;
@@ -273,7 +282,7 @@ main{
     border:1px solid rgba(255,255,255,0.4);
 
     box-shadow:
-        0 15px 50px rgba(15,23,42,0.08);
+        0 15px 50px rgba(10,6,36,0.08);
 
     animation:fadeUp 1s ease;
 }
@@ -302,15 +311,15 @@ main{
 .grid-cell{
 
     padding:18px;
-    border-right:1px solid rgba(226,232,240,0.6);
-    border-bottom:1px solid rgba(226,232,240,0.6);
+    border-right:1px solid rgba(215,225,220,0.6);
+    border-bottom:1px solid rgba(215,225,220,0.6);
 }
 
 /* HEADER */
 
 .grid-header{
 
-    background:linear-gradient(135deg,#f8fafc,#dbeafe);
+    background:linear-gradient(135deg,#f8fafc,#D7E1DC);
 
     text-align:center;
     font-weight:700;
@@ -324,7 +333,7 @@ main{
 
 .grid-header:hover{
 
-    background:linear-gradient(135deg,#e0f2fe,#dbeafe);
+    background:linear-gradient(135deg,#EEF3F1,#D7E1DC);
 }
 
 /* STAFF */
@@ -343,7 +352,7 @@ main{
 
     border-radius:18px;
 
-    background:linear-gradient(135deg,#06b6d4,#8b5cf6);
+    background:linear-gradient(135deg,#607570,#3E5B54);
 
     color:white;
 
@@ -355,7 +364,7 @@ main{
     font-size:18px;
 
     box-shadow:
-        0 8px 18px rgba(6,182,212,0.3);
+        0 8px 18px rgba(96,117,112,0.3);
 
     transition:0.3s;
 }
@@ -438,31 +447,31 @@ main{
 
 .shift-cell.morning{
 
-    background:linear-gradient(135deg,#fbbf24,#f59e0b);
+    background:linear-gradient(135deg,#C9A227,#a3821f);
 }
 
 .shift-cell.day{
 
-    background:linear-gradient(135deg,#38bdf8,#0ea5e9);
+    background:linear-gradient(135deg,#607570,#4F6B63);
 }
 
 .shift-cell.evening{
 
-    background:linear-gradient(135deg,#a855f7,#7c3aed);
+    background:linear-gradient(135deg,#7C948E,#3E5B54);
 }
 
 .shift-cell.night{
 
-    background:linear-gradient(135deg,#334155,#0f172a);
+    background:linear-gradient(135deg,#2B3D37,#0A0624);
 }
 
 /* TOTAL */
 
 .total-box{
 
-    background:linear-gradient(135deg,#cffafe,#e0f2fe);
+    background:linear-gradient(135deg,#EEF3F1,#D7E1DC);
 
-    color:#0369a1;
+    color:#3E5B54;
 
     text-align:center;
     font-weight:800;
@@ -477,7 +486,7 @@ main{
 
 .total-box:hover{
 
-    background:linear-gradient(135deg,#06b6d4,#0891b2);
+    background:linear-gradient(135deg,#607570,#3E5B54);
     color:white;
 }
 
@@ -500,7 +509,7 @@ main{
 }
 .download-btn{
     display:inline-block;
-    background:#06b6d4;
+    background:#607570;
     color:white;
     padding:12px 20px;
     border-radius:10px;
