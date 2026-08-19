@@ -1,7 +1,17 @@
 @extends('layouts.default')
-
+ @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
     @section('meta')
-        <title>Profile |Jpingos</title>
+        <title>Profile | {{ $appName }}</title>
         <meta name="description" content="Workday view employee profile, edit employee profile, update employee profile">
         <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
@@ -65,9 +75,9 @@ if (!empty($p->idexpirydate)) {
                     <div class="box-body employee-info">
                         <div class="author">
                         @if($i != null)
-                            <img class="avatar border-white img-fluid" src="{{ asset('/assets/faces/'.$i) }}" alt="profile photo"/>
+                            <img class="avatar border-white img-fluid" src="{{ asset('storage/' . $i) }}" alt="profile photo"/>
                         @else
-                            <img class="avatar border-white img-fluid" src="{{ asset('/assets/images/faces/default_user.jpg') }}" alt="profile photo"/>
+                            <img class="avatar border-white img-fluid" src="{{ asset('assets/images/faces/default_user.jpg') }}" alt="profile photo"/>
                         @endif
                         </div>
                         <p class="description text-center">

@@ -160,6 +160,15 @@ class ProfileController extends Controller
 			$company = $companyRow ? mb_strtoupper($companyRow->company) : null;
 		}
 
+		if($request->sharecode != null){
+			$sharecodeexpiry = date("Y-m-d", strtotime($request->sharecodeexpiry));
+		}
+		else{
+			return redirect('profile/edit/'.$id)->withInput()->with('error', trans("Whoops! Share Code is required if Share Code Expiry Date is provided."));			
+			};
+		
+		
+
 		$department = mb_strtoupper($request->department);
 		$jobposition = mb_strtoupper($request->jobposition);
 		$companyemail = mb_strtolower($request->companyemail);
@@ -200,7 +209,7 @@ class ProfileController extends Controller
 			DB::transaction(function () use (
 				$id, $lastname, $firstname, $mi, $age, $gender, $emailaddress, $civilstatus,
 				$height, $weight, $mobileno, $birthday, $nationalid, $birthplace, $homeaddress,
-				$avatarToSave, $company, $department, $jobposition, $companyemail, $leaveprivilege,
+				$avatarToSave, $company, $department, $jobposition,$sharecodeexpiry, $companyemail, $leaveprivilege,
 				$idno, $employmenttype, $employmentstatus,
 				$request, $addressDocPaths
 			) {
@@ -225,6 +234,7 @@ class ProfileController extends Controller
 					'perhourpay' => $request->perhourpay,
 					'accountpay'  =>  $request->accountpay,
 					'sharecode' => $request->sharecode,
+					'sharecode_expires_at' => $sharecodeexpiry,
 					'NI' => $request->ni,
 					'idissuedate' => $request->idissuedate,
 					'idexpirydate' => $request->idexpirydate,

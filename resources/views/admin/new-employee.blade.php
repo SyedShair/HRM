@@ -1,7 +1,17 @@
 @extends('layouts.default')
-
+ @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
 @section('meta')
-    <title>New Employee |Jpingos</title>
+    <title>New Employee | {{ $appName }}</title>
     <meta name="description" content="Workday add new employee, delete employee, edit employee">
 @endsection
 
@@ -254,6 +264,10 @@
                             <input type="text" class="uppercase" name="sharecode" value="" placeholder="">
                         </div>
                         <div class="field">
+                            <label>{{ __('Share Code Expiry Date') }}</label>
+                            <input type="date" name="sharecodeexpiry" value="">
+                        </div>
+                        <div class="field">
                             <label>{{ __('National Insurance') }}</label>
                             <input type="text" class="uppercase" name="ni" value="" placeholder="">
                         </div>
@@ -380,10 +394,7 @@
                                 <input type="date" name="visaend" value="">
                             </div>
                         </div>
-                        <div class="field">
-                            <label>{{ __('Job Type') }}</label>
-                            <input type="text" class="uppercase" name="jobtype" value="" placeholder="e.g. Chef">
-                        </div>
+                        
 
                         <!-- ID Number, auto-generated on page load but editable -->
                         <div class="field">

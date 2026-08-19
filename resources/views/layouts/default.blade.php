@@ -7,7 +7,7 @@
             // configured yet, so this is safe even before anyone touches
             // the new fields.
             $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
-            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Jpingos';
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
             $appLogo = !empty($appSettings->app_logo)
                 ? asset('storage/'.$appSettings->app_logo)
                 : asset('/assets/images/img/logo.png');

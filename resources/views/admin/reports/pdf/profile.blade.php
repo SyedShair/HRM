@@ -97,7 +97,7 @@
         <tr>
             <td style="width: 90px;">
                 @if(!empty($i))
-                    <img class="avatar" src="{{ public_path('assets/faces/'.$i) }}">
+                    <img class="avatar" src="{{ public_path('storage/' . $i) }}">
                 @else
                     <img class="avatar" src="{{ public_path('assets/images/faces/default_user.jpg') }}">
                 @endif

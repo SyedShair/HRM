@@ -10,8 +10,18 @@
         <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('/assets/images/img/favicon-16x16.png') }}">
         <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('/assets/images/img/favicon-32x32.png') }}">
         <link rel="icon" type="image/x-icon" href="{{ asset('/assets/images/img/favicon.ico') }}">
-        
-        <title> Clock | Jpingos</title>
+        @php
+            // Branding: pulled from the Settings page (App name / logo).
+            // Falls back to existing static defaults if nothing has been
+            // configured yet, so this is safe even before anyone touches
+            // the new fields.
+            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Jpingos';
+            $appLogo = !empty($appSettings->app_logo)
+                ? asset('storage/'.$appSettings->app_logo)
+                : asset('/assets/images/img/logo.png');
+        @endphp
+        <title> Clock | {{ $appName }}</title>
         <link rel="stylesheet" type="text/css" href="{{ asset('/assets/vendor/bootstrap/css/bootstrap.min.css') }}">
         <link rel="stylesheet" type="text/css" href="{{ asset('/assets/vendor/semantic-ui/semantic.min.css') }}">
         <link rel="stylesheet" type="text/css" href="{{ asset('/assets/css/clock.css') }}">
