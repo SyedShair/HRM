@@ -427,7 +427,10 @@
                             <input type="date" name="visaend" value="{{ old('visaend', $company_details->visaend) }}">
                         </div>
                     </div>
-                    
+                    <div class="field">
+                        <label>{{ __('Job SOC Code') }}</label>
+                        <input type="text" class="uppercase" name="jobtype" value="{{ old('jobtype', $company_details->jobtype) }}" placeholder="e.g. Chef">
+                    </div>
                     <div class="field">
                         <label>{{ __('ID Number') }}</label>
                         <input type="text" class="uppercase" name="idno" id="idno" value="{{ old('idno', $company_details->idno) }}">

@@ -394,7 +394,10 @@
                                 <input type="date" name="visaend" value="">
                             </div>
                         </div>
-                        
+                        <div class="field">
+                            <label>{{ __('Job SOC Code') }}</label>
+                            <input type="text" class="uppercase" name="jobtype" value="" placeholder="e.g. Chef">
+                        </div>
 
                         <!-- ID Number, auto-generated on page load but editable -->
                         <div class="field">
