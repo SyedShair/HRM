@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-
+use Illuminate\Support\Facades\Storage;
 use App\User;
 use App\Message;
 use Auth;
@@ -57,7 +57,7 @@ class ChatController extends Controller
 }
 public function fetchMessages($id)
 {
-    // 1. Mark messages as read (IMPORTANT FIX)
+    // 1. Mark messages as read
     Message::where('sender_id', $id)
         ->where('receiver_id', Auth::id())
         ->where('is_read', 0)
@@ -78,6 +78,15 @@ public function fetchMessages($id)
 
     })->orderBy('id', 'ASC')->get();
 
+    // 3. Attach a ready-to-use public URL for any attached file
+    // (fixes "image not show" — frontend no longer has to guess the disk/path)
+    $messages->transform(function ($msg) {
+        $msg->file_url = $msg->file
+            ? Storage::disk('public')->url($msg->file)
+            : null;
+        return $msg;
+    });
+
     return response()->json($messages);
 }
     // public function fetchMessages($id)
@@ -97,60 +106,56 @@ public function fetchMessages($id)
     //     return response()->json($messages);
     // }
 
-   public function sendMessage(Request $request)
+public function sendMessage(Request $request)
 {
-   $file = $request->file('file');
+    $filePath = null;
+    $fileType = null;
 
-$filePath = null;
-$fileType = null;
+    if ($request->hasFile('file')) {
 
-if ($file) {
+        $file = $request->file('file');
 
-    // Clean filename
-    $original  = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-    $extension = strtolower($file->getClientOriginalExtension());
+        // Clean filename
+        $original  = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $extension = strtolower($file->getClientOriginalExtension());
 
-    $cleanName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $original);
+        $cleanName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $original);
 
-    $newFileName = time() . '_' . $cleanName . '.' . $extension;
+        $newFileName = time() . '_' . $cleanName . '.' . $extension;
 
-    // ✅ SINGLE CHAT FOLDER (NO EMPLOYEE NAME)
-    $uploadPath = public_path('uploads/chat_files');
+        // Store in: storage/app/public/uploads/chat_files
+        $filePath = $file->storeAs(
+            'uploads/chat_files',
+            $newFileName,
+            'public'
+        );
 
-    if (!file_exists($uploadPath)) {
-        mkdir($uploadPath, 0777, true);
+        // File type
+        if ($extension === 'pdf') {
+            $fileType = 'pdf';
+        } elseif (in_array($extension, ['doc', 'docx'])) {
+            $fileType = 'doc';
+        } elseif (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+            $fileType = 'image';
+        } else {
+            $fileType = 'file';
+        }
     }
 
-    // Move file
-    $file->move($uploadPath, $newFileName);
-
-    // DB path
-    $filePath = 'uploads/chat_files/' . $newFileName;
-
-    // File type detect
-    if ($extension === 'pdf') {
-        $fileType = 'pdf';
-    } elseif (in_array($extension, ['doc', 'docx'])) {
-        $fileType = 'doc';
-    } elseif (in_array($extension, ['jpg','jpeg','png','gif','webp'])) {
-        $fileType = 'image';
-    } else {
-        $fileType = 'file';
-    }
-}
-    // =========================
-    // SAVE MESSAGE
-    // =========================
+    // Save message
     Message::create([
-        'sender_id' => Auth::id(),
+        'sender_id'   => Auth::id(),
         'receiver_id' => $request->receiver_id,
-        'message' => $request->message ?? null,
-        'file' => $filePath,   // NEW COLUMN
-        'is_read' => 0
+        'message'     => $request->message ?? null,
+        'file'        => $filePath,
+        'is_read'     => 0
     ]);
 
     return response()->json([
-        'status' => true
+        'status' => true,
+        'file' => $filePath,
+        'file_url' => $filePath ? Storage::disk('public')->url($filePath) : null,
+        'file_type' => $fileType
     ]);
 }
     public function markAsRead(Request $request)
