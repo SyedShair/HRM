@@ -18,19 +18,25 @@ use App\Http\Controllers\Controller;
 class ProfileController extends Controller
 {
 
-    public function view($id, Request $request)
-    {
-		if (permission::permitted('employees-view')=='fail'){ return redirect()->route('denied'); }
-		
-		$p = table::people()->where('id', $id)->first();
-		$c = table::companydata()->where('reference', $id)->first();
-		$i = table::people()->select('avatar')->where('id', $id)->value('avatar');
-		$leavetype = table::leavetypes()->get();
-		$leavegroup = table::leavegroup()->get();
+  public function view($id, Request $request)
+{
+    if (permission::permitted('employees-view')=='fail'){ return redirect()->route('denied'); }
+    
+    $p = table::people()->where('id', $id)->first();
+    $c = table::companydata()->where('reference', $id)->first();
+    $i = table::people()->select('avatar')->where('id', $id)->value('avatar');
+    $leavetype = table::leavetypes()->get();
+    $leavegroup = table::leavegroup()->get();
 
-        return view('admin.profile-view', compact('p', 'c', 'i', 'leavetype', 'leavegroup'));
-    }
+    // Job Duties now comes from tbl_form_jobtitle (the master record
+    // for that position) via the real jobtitle_id FK on
+    // tbl_company_data, rather than a free-text match.
+    $jobtitleRow = $c->jobtitle_id
+        ? table::jobtitle()->where('id', $c->jobtitle_id)->first()
+        : null;
 
+    return view('admin.profile-view', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'jobtitleRow'));
+}
    	public function delete($id, Request $request)
     {
 		if (permission::permitted('employees-delete')=='fail'){ return redirect()->route('denied'); }
@@ -158,6 +164,7 @@ class ProfileController extends Controller
 		if ($request->filled('company_id')) {
 			$companyRow = table::company()->where('id', $request->company_id)->first();
 			$company = $companyRow ? mb_strtoupper($companyRow->company) : null;
+			$companyId = $companyRow ? $companyRow->id : null;
 		}
 
 		if($request->sharecode != null){
@@ -211,7 +218,7 @@ class ProfileController extends Controller
 				$height, $weight, $mobileno, $birthday, $nationalid, $birthplace, $homeaddress,
 				$avatarToSave, $company, $department, $jobposition,$sharecodeexpiry, $companyemail, $leaveprivilege,
 				$idno, $employmenttype, $employmentstatus,
-				$request, $addressDocPaths
+				$request, $addressDocPaths,
 			) {
 				table::people()->where('id', $id)->update([
 					'lastname' => $lastname,
@@ -242,6 +249,7 @@ class ProfileController extends Controller
 
 				table::companydata()->where('reference', $id)->update([
 					'company' => $company,
+					'company_id' =>$companyId,
 					'department' => $department,
 					'jobposition' => $jobposition,
 					'companyemail' => $companyemail,
@@ -526,8 +534,9 @@ public function printProfile($id)
         ->where('reference', $id)
         ->orderBy('date_from')
         ->get();
+$rawjobtitle = $c->jobtitle_id ? table::jobtitle()->where('id', $c->jobtitle_id)->first() : null;
 
-    $pdf = Pdf::loadView('admin.reports.pdf.profile', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'addressHistory'))
+    $pdf = Pdf::loadView('admin.reports.pdf.profile', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'addressHistory', 'rawjobtitle'))
         ->setPaper('a4', 'portrait');
 
     $filename = mb_strtoupper($p->firstname . '-' . $p->lastname . '-profile') . '.pdf';

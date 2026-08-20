@@ -1,34 +1,21 @@
 @extends('layouts.default')
- @php
-            // Branding: pulled from the Settings page (App name / logo).
-            // Falls back to existing static defaults if nothing has been
-            // configured yet, so this is safe even before anyone touches
-            // the new fields.
-            $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
-            $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
-            $appLogo = !empty($appSettings->app_logo)
-                ? asset('storage/'.$appSettings->app_logo)
-                : asset('/assets/images/img/logo.png');
-        @endphp
+@php
+    // Branding: pulled from the Settings page (App name / logo).
+    // Falls back to existing static defaults if nothing has been
+    // configured yet, so this is safe even before anyone touches
+    // the new fields.
+    $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+    $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+    $appLogo = !empty($appSettings->app_logo)
+        ? asset('storage/'.$appSettings->app_logo)
+        : asset('/assets/images/img/logo.png');
+@endphp
 @section('meta')
     <title>Employees | {{ $appName }}</title>
     <meta name="description" content="Workday employees management system">
 @endsection
 
 @section('content')
-
-@php
-use Carbon\Carbon;
-
-$total = count($data ?? []);
-$active = collect($data ?? [])->where('employmentstatus', 'Active')->count();
-$expired = collect($data ?? [])->filter(fn($e) => $e->visaend && Carbon::parse($e->visaend)->isPast())->count();
-$expiring = collect($data ?? [])->filter(function ($e) {
-    if (!$e->visaend) return false;
-    $days = Carbon::parse($e->visaend)->diffInDays(now(), false);
-    return $days > 0 && $days <= 90;
-})->count();
-@endphp
 
 <style>
 /* Clean, professional table styling — no motion/animation effects */
@@ -77,6 +64,17 @@ $expiring = collect($data ?? [])->filter(function ($e) {
     color: #d93025;
     font-weight: 600;
 }
+
+/* Preloader overlay for AJAX table refresh */
+#tablePreloader {
+    display: none;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.7);
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
+}
 </style>
 
 <div class="container-fluid">
@@ -91,30 +89,44 @@ $expiring = collect($data ?? [])->filter(function ($e) {
         </h2>
     </div>
 
+    <!-- ================= COMPANY FILTER ================= -->
+    <div class="row" style="margin-bottom: 15px;">
+        <div class="col-md-3">
+            <select id="companyFilterSelect" class="ui fluid dropdown"
+                    style="padding:8px 10px; border:1px solid #e5e7eb; border-radius:6px; width:100%;">
+                @foreach($companies as $c)
+                    <option value="{{ $c->id }}" {{ (string) $companyId === (string) $c->id ? 'selected' : '' }}>
+                        {{ $c->company }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+    </div>
+
     <!-- ================= SUMMARY ================= -->
     <div class="row" style="margin-bottom: 15px;">
         <div class="col-md-3">
             <div class="box box-solid" style="padding:12px 16px; border:1px solid #e5e7eb; border-radius:6px;">
                 <div style="font-size:11px; color:#6b7280; text-transform:uppercase;">Total Employees</div>
-                <div style="font-size:22px; font-weight:600;">{{ $total }}</div>
+                <div id="summaryTotal" style="font-size:22px; font-weight:600;">{{ $total }}</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="box box-solid" style="padding:12px 16px; border:1px solid #e5e7eb; border-radius:6px;">
                 <div style="font-size:11px; color:#6b7280; text-transform:uppercase;">Active</div>
-                <div style="font-size:22px; font-weight:600; color:#16794f;">{{ $active }}</div>
+                <div id="summaryActive" style="font-size:22px; font-weight:600; color:#16794f;">{{ $active }}</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="box box-solid" style="padding:12px 16px; border:1px solid #e5e7eb; border-radius:6px;">
                 <div style="font-size:11px; color:#6b7280; text-transform:uppercase;">Visas Expiring (90 days)</div>
-                <div style="font-size:22px; font-weight:600; color:#b7791f;">{{ $expiring }}</div>
+                <div id="summaryExpiring" style="font-size:22px; font-weight:600; color:#b7791f;">{{ $expiring }}</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="box box-solid" style="padding:12px 16px; border:1px solid #e5e7eb; border-radius:6px;">
                 <div style="font-size:11px; color:#6b7280; text-transform:uppercase;">Visas Expired</div>
-                <div style="font-size:22px; font-weight:600; color:#d93025;">{{ $expired }}</div>
+                <div id="summaryExpired" style="font-size:22px; font-weight:600; color:#d93025;">{{ $expired }}</div>
             </div>
         </div>
     </div>
@@ -122,7 +134,12 @@ $expiring = collect($data ?? [])->filter(function ($e) {
     <!-- ================= TABLE ================= -->
     <div class="row">
         <div class="box box-success">
-            <div class="box-body">
+            <div class="box-body" style="position: relative;">
+
+                <!-- Preloader overlay -->
+                <div id="tablePreloader">
+                    <div class="ui active inline loader"></div>
+                </div>
 
                 <table class="table table-striped table-hover" id="dataTables" width="100%">
 
@@ -141,235 +158,8 @@ $expiring = collect($data ?? [])->filter(function ($e) {
                     </tr>
                     </thead>
 
-                    <tbody>
-
-                    @foreach($data ?? [] as $employee)
-
-                        @php
-                            $now = Carbon::now();
-                            $end = $employee->visaend ? Carbon::parse($employee->visaend) : null;
-
-                            $months = null;
-                            $days = null;
-                            $diffDays = null;
-                            $expired = false;
-
-                            if ($end) {
-                                $diff = $now->diff($end, false);
-                                $diffDays = $now->diffInDays($end, false);
-
-                                if ($diff->invert) {
-                                    $expired = true;
-                                } else {
-                                    $months = ($diff->y * 12) + $diff->m;
-                                    $days = $diff->d;
-                                }
-                            }
-
-                            $passportExpiry = $employee->idexpirydate ? Carbon::parse($employee->idexpirydate) : null;
-                            $passportMonths = null;
-                            $passportDays = null;
-                            $passportExpired = false;
-
-                            if ($passportExpiry) {
-                                $passportDiff = $now->diff($passportExpiry, false);
-                                if ($passportDiff->invert) {
-                                    $passportExpired = true;
-                                } else {
-                                    $passportMonths = ($passportDiff->y * 12) + $passportDiff->m;
-                                    $passportDays = $passportDiff->d;
-                                }
-                            }
-
- $sharecodeExpiry = null;
-    $sharecodeExpired = false;
-    $sharecodeDaysLeft = null;
-
-    if (!empty($employee->sharecode_expires_at)) {
-        try {
-            $sharecodeExpiry = Carbon::parse($employee->sharecode_expires_at);
-
-            $sharecodeDaysLeft = (int) $now->diffInDays($sharecodeExpiry, false);
-
-            if ($sharecodeDaysLeft < 0) {
-                $sharecodeExpired = true;
-            }
-        } catch (\Exception $e) {
-            $sharecodeExpiry = null;
-        }
-    }
-                        @endphp
-
-                        <tr class="{{ ($diffDays !== null && $diffDays <= 90 && $diffDays > 0) ? 'expiring-row' : '' }}">
-
-                            <td>{{ $employee->idno }}</td>
-                            <td>{{ $employee->lastname }}, {{ $employee->firstname }}</td>
-                            <td>{{ $employee->company }}</td>
-                            <td>{{ $employee->department }}</td>
-                            <td>{{ $employee->jobposition }}</td>
- <td>
-    @if(empty($employee->sharecode))
-
-        {{-- NO SHARE CODE --}}
-        <span class="ui grey label">
-            No Share Code
-        </span>
-
-        
-    @elseif(!$sharecodeExpiry)
-
-        {{-- SHARE CODE EXISTS BUT NO EXPIRY DATE --}}
-        <div>
-            <strong>{{ $employee->sharecode }}</strong>
-        </div>
-
-        <div style="margin-top: 5px;">
-            <span class="ui orange label">
-                Expiry Not Set
-            </span>
-        </div>
-
-       
-
-    @elseif($sharecodeExpired)
-
-        {{-- EXPIRED --}}
-        <div>
-            <span class="ui red label">
-                Share Code Expired
-            </span>
-        </div>
-
-        
-
-    @else
-
-        {{-- VALID SHARE CODE --}}
-        <div>
-            <strong>{{ $employee->sharecode }}</strong>
-        </div>
-
-        <div style="margin-top: 5px;">
-
-            @if($sharecodeDaysLeft > 30)
-
-                <span class="ui green label">
-                    {{ $sharecodeDaysLeft }} days left
-                </span>
-
-            @elseif($sharecodeDaysLeft > 14)
-
-                <span class="ui yellow label">
-                    {{ $sharecodeDaysLeft }} days left
-                </span>
-
-            @else
-
-                <span class="ui red label">
-                    {{ $sharecodeDaysLeft }} days left
-                </span>
-
-            @endif
-
-        </div>
-
-        {{-- SAFE: only executed when $sharecodeExpiry exists --}}
-        <div style="font-size: 11px; color: #777; margin-top: 3px;">
-            Expires {{ $sharecodeExpiry->format('d M Y') }}
-        </div>
-
-    @endif
-</td>
-
-                            <!-- PASSPORT (nationalid) + expiry countdown -->
-                            <td>
-                                <div class="visa-expiry-date">{{ $employee->nationalid ?? '—' }}</div>
-
-                                @if($passportExpiry)
-                                    @if($passportExpired)
-                                        <span class="ui red label">Expired</span>
-                                    @else
-                                        <span class="ui {{ $passportMonths > 6 ? 'green' : ($passportMonths > 3 ? 'yellow' : 'red') }} label">
-                                            {{ $passportMonths }} months {{ $passportDays }} days left
-                                        </span>
-                                    @endif
-                                @endif
-                            </td>
-
-                            <!-- VISA -->
-                            <td>
-                                @if($end)
-
-                                    <div class="visa-expiry-date">{{ $end->format('d M Y') }}</div>
-
-                                    @if($expired)
-                                        <span class="ui red label">Expired</span>
-                                    @else
-                                        <span class="ui {{ $months > 6 ? 'green' : ($months > 3 ? 'yellow' : 'red') }} label">
-                                            {{ $months }} months {{ $days }} days left
-                                        </span>
-                                    @endif
-
-                                @else
-                                    <span class="ui green label">British Citizen</span>
-                                @endif
-                            </td>
-
-                            <!-- STATUS -->
-                            <td>
-                                @if($employee->employmentstatus === 'Active')
-                                    <span class="ui green label">Active</span>
-                                @else
-                                    <span class="ui grey label">Archived</span>
-                                @endif
-                            </td>
-
-                            <!-- ACTIONS -->
-                            <td class="right aligned">
-
-                                <a href="{{ url('/employee/'.$employee->id.'/documents') }}"
-                                   class="ui circular basic icon button tiny blue">
-                                    <i class="folder open icon"></i>
-                                </a>
-
-                                <a href="{{ url('/profile/view/'.$employee->reference) }}"
-                                   class="ui circular basic icon button tiny green">
-                                    <i class="file alternate outline icon"></i>
-                                </a>
-
-                                <a href="{{ url('/profile/edit/'.$employee->reference) }}"
-                                   class="ui circular basic icon button tiny orange">
-                                    <i class="edit outline icon"></i>
-                                </a>
-
-                                <a href="{{ url('/profile/delete/'.$employee->reference) }}"
-                                   class="ui circular basic icon button tiny red">
-                                    <i class="trash alternate outline icon"></i>
-                                </a>
-
-                                <a href="{{ url('/profile/archive/'.$employee->reference) }}"
-                                   class="ui circular basic icon button tiny grey">
-                                    <i class="archive icon"></i>
-                                </a>
-
-                                <a href="{{ route('employee.print.pdf', $employee->id) }}"
-                                   class="ui circular basic icon button tiny purple"
-                                   target="_blank">
-                                    <i class="print icon"></i>
-                                </a>
-
-                                <button class="ui circular basic icon button tiny teal download-qr"
-                                        data-pdf="{{ route('employee.print.pdf', $employee->id) }}">
-                                    <i class="qrcode icon"></i>
-                                </button>
-
-                            </td>
-                         
-
-                        </tr>
-
-                    @endforeach
-
+                    <tbody id="employeesTableBody">
+                        @include('admin.partials.employees-rows')
                     </tbody>
 
                 </table>
@@ -390,20 +180,22 @@ $expiring = collect($data ?? [])->filter(function ($e) {
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-    document.querySelectorAll('.download-qr').forEach(btn => {
-        btn.addEventListener('click', function () {
+    // Delegated so this keeps working on rows swapped in by the
+    // company-filter AJAX call below (rows that didn't exist yet
+    // when the page first loaded).
+    document.body.addEventListener('click', function (e) {
+        const btn = e.target.closest('.download-qr');
+        if (!btn) return;
 
-            const canvas = document.createElement('canvas');
+        const canvas = document.createElement('canvas');
 
-            QRCode.toCanvas(canvas, this.dataset.pdf, { width: 300 }, function (err) {
-                if (err) return alert("QR Error");
+        QRCode.toCanvas(canvas, btn.dataset.pdf, { width: 300 }, function (err) {
+            if (err) return alert("QR Error");
 
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/png');
-                link.download = 'employee-qr.png';
-                link.click();
-            });
-
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = 'employee-qr.png';
+            link.click();
         });
     });
 
@@ -411,31 +203,67 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 
 <!--
-    DataTables init.
+    DataTables init + AJAX company filter.
 
     jQuery + DataTables (with Responsive extension bundled) are already
     loaded once, globally, by layouts/default.blade.php — do NOT add
-    another copy of jQuery/DataTables here. A second copy causes the
-    table to appear to initialize multiple times on one page.
+    another copy of jQuery/DataTables here.
 
-    The isDataTable() guard below is defensive: it lets this script run
-    safely even if the view is ever re-rendered into the DOM without a
-    full page reload (e.g. via AJAX/partial navigation) without throwing
-    "table already initialized" errors or stacking duplicate instances.
+    A single DataTable instance is created once and kept alive; the
+    company filter swaps its row data via clear()/rows.add()/draw()
+    instead of destroying and reinitializing the table, which is the
+    officially supported way to refresh DataTables content and avoids
+    "already initialized" errors or stale pagination counts.
 -->
 <script>
 $(document).ready(function () {
-    if ($.fn.DataTable.isDataTable('#dataTables')) {
-        $('#dataTables').DataTable().destroy();
-    }
 
-    $('#dataTables').DataTable({
+    var employeesTable = $('#dataTables').DataTable({
         responsive: true,
         pageLength: 15,
         lengthChange: false,
         searching: true,
         ordering: true
     });
+
+    function showPreloader() {
+        $('#tablePreloader').css('display', 'flex');
+    }
+    function hidePreloader() {
+        $('#tablePreloader').css('display', 'none');
+    }
+
+    $('#companyFilterSelect').on('change', function () {
+        const companyId = $(this).val();
+
+        showPreloader();
+
+        $.ajax({
+            url: '{{ route("employees.filter") }}',
+            method: 'GET',
+            data: { company_id: companyId },
+            dataType: 'json',
+            success: function (response) {
+                const $newRows = $('<tbody>' + response.rows + '</tbody>').find('tr');
+
+                employeesTable.clear();
+                employeesTable.rows.add($newRows);
+                employeesTable.draw();
+
+                $('#summaryTotal').text(response.total);
+                $('#summaryActive').text(response.active);
+                $('#summaryExpiring').text(response.expiring);
+                $('#summaryExpired').text(response.expired);
+            },
+            error: function () {
+                alert('Something went wrong while filtering employees.');
+            },
+            complete: function () {
+                hidePreloader();
+            }
+        });
+    });
+
 });
 </script>
 

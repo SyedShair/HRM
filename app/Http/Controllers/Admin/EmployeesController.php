@@ -15,61 +15,137 @@ use App\Http\Controllers\Controller;
 class EmployeesController extends Controller
 {
 
-	public function index() 
+	public function index(Request $request)
 	{
         if (permission::permitted('employees')=='fail'){ return redirect()->route('denied'); }
 
-		$emp_typeR = table::people()
-		->where('employmenttype', 'Regular')
-		->where('employmentstatus', 'Active')
-		->count();
+		$companies = table::company()->orderBy('company')->get();
 
-		$emp_typeT = table::people()
-		->where('employmenttype', 'Trainee')
-		->where('employmentstatus', 'Active')
-		->count();
+		$companyId = $request->query('company_id');
+		$companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
 
-		$emp_genderM = table::people()
-		->where('gender', 'Male')
-		->count();
+		// No "All Companies" option - always scope to a single company.
+		// Default to the first company in the list if none was requested.
+		if (!$companyId && $companies->isNotEmpty()) {
+			$companyId = $companies->first()->id;
+		}
 
-		$emp_genderR = table::people()
-		->where('gender', 'Female')
-		->count();
+		$data = $this->getEmployeesForCompany($companyId);
+		$counts = $this->buildSummaryCounts($data);
 
-		$emp_allActive = table::people()
-		->where('employmentstatus', 'Active')
-		->count();
+		$emp_typeR = $data->where('employmenttype', 'Regular')
+			->where('employmentstatus', 'Active')->count();
 
-		$emp_allArchive = table::people()
-		->where('employmentstatus', 'Archive')
-		->count();
+		$emp_typeT = $data->where('employmenttype', 'Trainee')
+			->where('employmentstatus', 'Active')->count();
 
-		$data = table::people()
-		->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
-		->get();
+		$emp_genderM = $data->where('gender', 'Male')->count();
+		$emp_genderR = $data->where('gender', 'Female')->count();
+		$emp_allActive = $data->where('employmentstatus', 'Active')->count();
+		$emp_allArchive = $data->where('employmentstatus', 'Archive')->count();
 
-		$emp_file = table::people()->count();
-		
-		if($emp_allArchive != null OR $emp_allActive != null OR $emp_allArchive >= 1 OR $emp_allActive >= 1)
+		$emp_file = $data->count();
+
+		if ($emp_allArchive != null OR $emp_allActive != null OR $emp_allArchive >= 1 OR $emp_allActive >= 1)
 		{
 			$number1 = $emp_allArchive / $emp_allActive * 100;
 		} else {
 			$number1 = null;
 		}
-		
-	    return view('admin.employees', compact('data', 'emp_typeR', 'emp_typeT', 'emp_genderM', 'emp_genderR', 'emp_allActive', 'emp_file', 'emp_allArchive'));
-	}
-	
-	
-	public function api()
-{
-    $data = DB::table('tbl_people')
-        ->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
-        ->get();
 
-    return response()->json($data);
-}
+	    return view('admin.employees', array_merge($counts, compact(
+	    	'data', 'emp_typeR', 'emp_typeT', 'emp_genderM', 'emp_genderR',
+	    	'emp_allActive', 'emp_file', 'emp_allArchive', 'companies', 'companyId'
+	    )));
+	}
+
+
+	public function api()
+	{
+	    $data = DB::table('tbl_people')
+	        ->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
+	        ->get();
+
+	    return response()->json($data);
+	}
+
+	/**
+	 * AJAX endpoint for the company filter dropdown + summary cards on
+	 * the Employees page. Returns rendered table rows plus recalculated
+	 * summary numbers (Total / Active / Expiring / Expired), all scoped
+	 * to whichever company was selected.
+	 */
+	public function filterByCompany(Request $request)
+	{
+		if (permission::permitted('employees') == 'fail') {
+			return response('', 403);
+		}
+
+		$companyId = $request->query('company_id');
+		$companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
+
+		$data = $this->getEmployeesForCompany($companyId);
+		$counts = $this->buildSummaryCounts($data);
+
+		$rowsHtml = view('admin.partials.employees-rows', compact('data'))->render();
+
+		return response()->json(array_merge($counts, ['rows' => $rowsHtml]));
+	}
+
+	/**
+	 * Shared query: people + company data, optionally scoped to one
+	 * company. Matches on the real FK (tbl_company_data.company_id)
+	 * first, falling back to the free-text company name for any rows
+	 * that haven't been backfilled with a company_id yet.
+	 *
+	 * @param int|null $companyId
+	 * @return \Illuminate\Support\Collection
+	 */
+	private function getEmployeesForCompany($companyId)
+	{
+		$q = table::people()
+			->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference');
+
+		if ($companyId) {
+			$companyRow = table::company()->where('id', $companyId)->first();
+			$companyName = $companyRow ? mb_strtoupper(trim($companyRow->company)) : null;
+
+			$q->where(function ($sub) use ($companyId, $companyName) {
+				$sub->where('tbl_company_data.company_id', $companyId);
+
+				if ($companyName) {
+					$sub->orWhereRaw('UPPER(TRIM(tbl_company_data.company)) = ?', [$companyName]);
+				}
+			});
+		}
+
+		return $q->get();
+	}
+
+	/**
+	 * Recompute the 4 summary cards (Total / Active / Expiring / Expired)
+	 * from a given employee collection.
+	 *
+	 * @param \Illuminate\Support\Collection $data
+	 * @return array
+	 */
+	private function buildSummaryCounts($data)
+	{
+		$total = $data->count();
+		$active = $data->where('employmentstatus', 'Active')->count();
+
+		$expired = $data->filter(function ($e) {
+			return $e->visaend && Carbon::parse($e->visaend)->isPast();
+		})->count();
+
+		$expiring = $data->filter(function ($e) {
+			if (!$e->visaend) return false;
+			$days = Carbon::parse($e->visaend)->diffInDays(now(), false);
+			return $days > 0 && $days <= 90;
+		})->count();
+
+		return compact('total', 'active', 'expiring', 'expired');
+	}
 
 	public function new() 
 	{
@@ -154,6 +230,7 @@ class EmployeesController extends Controller
 		
 		$companyRow = table::company()->where('id', $request->company_id)->first();
 		$company = mb_strtoupper($companyRow->company);
+		$companyId = $companyRow->id;
 	  
 		$lastname = mb_strtoupper($request->lastname);
 		$firstname = mb_strtoupper($request->firstname);
@@ -267,6 +344,7 @@ class EmployeesController extends Controller
 					[
 						'reference' => $refId,
 						'company' => $company,
+						'company_id' =>$companyId,
 						'department' => $department,
 						'jobposition' => $jobposition,
 						'companyemail' => $companyemail,

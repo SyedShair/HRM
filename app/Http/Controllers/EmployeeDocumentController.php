@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Classes\table;
 use PDF;
 
 class EmployeeDocumentController extends Controller
@@ -521,10 +522,11 @@ protected function buildRequiredDocumentsChecklist($employee, $company, $documen
                 $doc->file_url = $this->resolveDocumentUrl($doc->file_path);
                 return $doc;
             });
+            $rawjobtitle = $company->jobtitle_id ? table::jobtitle()->where('id', $company->jobtitle_id)->first() : null;
 
         return view(
             'employees.full-pdf',
-            compact('employee', 'company', 'schedule', 'attendance', 'leaves', 'documents')
+            compact('employee', 'company', 'schedule', 'attendance', 'leaves', 'documents', 'rawjobtitle')
         );
     }
 }
