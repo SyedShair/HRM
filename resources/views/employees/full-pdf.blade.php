@@ -295,22 +295,8 @@
                 <tr>
                     <th>Job Duties</th>
                     <td>
-                        @if(!empty($company->jobduties))
-                            @php
-                                $duties = is_string($company->jobduties)
-                                    ? json_decode($company->jobduties, true)
-                                    : $company->jobduties;
-                            @endphp
-
-                            @if(is_array($duties))
-                                <ul style="margin:0; padding-left:18px;">
-                                    @foreach($duties as $duty)
-                                        <li>{{ $duty }}</li>
-                                    @endforeach
-                                </ul>
-                            @else
-                                {!! $company->jobduties !!}
-                            @endif
+                        @if(!empty($rawjobtitle?->jobduties))
+                            {!! strip_tags($rawjobtitle->jobduties, '<br><b><i><ul><ol><li>') !!}
                         @else
                             N/A
                         @endif

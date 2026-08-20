@@ -97,7 +97,7 @@
         <tr>
             <td style="width: 90px;">
                 @if(!empty($i))
-                    <img class="avatar" src="{{ public_path('storage/' . $i) }}">
+                    <img class="avatar" src="{{ asset('storage/' . $i) }}">
                 @else
                     <img class="avatar" src="{{ public_path('assets/images/faces/default_user.jpg') }}">
                 @endif
@@ -214,7 +214,7 @@
         </tr>
         <tr>
             <td class="label">Job Duties</td>
-            <td>{!! strip_tags($c->jobduties ?? '', '<br><b><i><ul><ol><li>') !!}</td>
+            <td>{!! strip_tags($rawjobtitle->jobduties ?? '', '<br><b><i><ul><ol><li>') !!}</td>
         </tr>
         <tr>
             <td class="label">Leave Privilege</td>

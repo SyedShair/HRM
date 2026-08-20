@@ -226,7 +226,7 @@ if (!empty($p->idexpirydate)) {
                                     </tr>
                                        <tr>
                                         <td>{{ __('Job Duties') }}</td>
-                                        <td class="uppercase">@isset($c->jobduties) {!! $c->jobduties !!} @endisset</td>
+                                        <td class="uppercase">@isset($jobtitleRow->jobduties) {!! $jobtitleRow->jobduties !!} @endisset</td>
 
                                     </tr>
                                     <tr>

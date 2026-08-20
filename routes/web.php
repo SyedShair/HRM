@@ -126,7 +126,7 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
             Route::get('employees', [EmployeesController::class, 'index'])->name('employees');
             Route::get('employees/new', [EmployeesController::class, 'new']);
             Route::post('employee/add', [EmployeesController::class, 'add']);
-
+            Route::get('employees/filter', [EmployeesController::class, 'filterByCompany'])->name('employees.filter');
             /*
             |--------------------------------------------------------------------------
             | Employee Profile
