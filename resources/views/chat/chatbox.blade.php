@@ -1,4 +1,3 @@
-
 @extends(Auth::user()->role_id == 2 ? 'layouts.personal' : 'layouts.default')
 @section('styles')
 
@@ -493,7 +492,6 @@ function loadMessages() {
         success: function (data) {
 
             let html = '';
-    const baseUrl = "{{ asset('') }}";
 
 data.forEach(msg => {
 
@@ -502,13 +500,11 @@ data.forEach(msg => {
    
 
     // =========================
-    // FILE / IMAGE RENDER (FIXED)
+    // FILE / IMAGE RENDER (FIXED — uses msg.file_url returned by backend)
     // =========================
 let fileHtml = '';
 
-if (msg.file) {
-
-    let fullUrl = baseUrl + msg.file;
+if (msg.file_url) {
 
     let ext = msg.file.split('.').pop().toLowerCase();
 
@@ -519,8 +515,8 @@ if (msg.file) {
 
         fileHtml = `
             <div style="margin-top:8px;">
-                <img src="${fullUrl}"
-                     onclick="openLightbox('${fullUrl}')"
+                <img src="${msg.file_url}"
+                     onclick="openLightbox('${msg.file_url}')"
                      style="max-width:220px;
                             border-radius:12px;
                             cursor:pointer;
@@ -537,7 +533,7 @@ if (msg.file) {
 
         fileHtml = `
             <div style="margin-top:8px;">
-                📄 <a href="${fullUrl}" target="_blank">View PDF</a>
+                📄 <a href="${msg.file_url}" target="_blank">View PDF</a>
             </div>
         `;
     }
@@ -549,7 +545,7 @@ if (msg.file) {
 
         fileHtml = `
             <div style="margin-top:8px;">
-                ⬇ <a href="${fullUrl}" target="_blank">Download File</a>
+                ⬇ <a href="${msg.file_url}" target="_blank">Download File</a>
             </div>
         `;
     }

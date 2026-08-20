@@ -253,6 +253,39 @@
 
                 <div class="box-body">
 
+                    {{-- ================= FILTER ================= --}}
+                    <div class="row" style="margin-bottom: 15px;">
+                        <div class="col-md-4">
+                            <label style="display:block; font-size:11px; color:#6b7280; text-transform:uppercase; margin-bottom:4px;">
+                                {{ __('Filter by Company') }}
+                            </label>
+                            <select id="jtCompanyFilter" class="ui fluid dropdown">
+                                {{-- No blank/placeholder option here - the first
+                                     company in the list is auto-selected by the
+                                     browser on load, same as before. --}}
+                                @isset($company)
+                                    @foreach ($company as $comp)
+                                        <option value="{{ $comp->id }}">{{ $comp->company }}</option>
+                                    @endforeach
+                                @endisset
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label style="display:block; font-size:11px; color:#6b7280; text-transform:uppercase; margin-bottom:4px;">
+                                {{ __('Filter by Department') }}
+                            </label>
+                            <select id="jtDepartmentFilter" class="ui fluid dropdown">
+                                {{-- Options are populated via AJAX, scoped to
+                                     whichever company is selected in the
+                                     Company filter (same endpoint as the Add
+                                     form's department dropdown). "All" is
+                                     always the first option so the table isn't
+                                     forced to a single department. --}}
+                                <option value="">{{ __('All') }}</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <table
                         width="100%"
                         class="table table-striped table-hover"
@@ -360,7 +393,7 @@ $(document).ready(function () {
     |--------------------------------------------------------------------------
     */
 
-    $('#dataTables-example').DataTable({
+    var jobtitleTable = $('#dataTables-example').DataTable({
         responsive: true,
         pageLength: 15,
         lengthChange: false,
@@ -371,7 +404,7 @@ $(document).ready(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Initialize dropdowns
+    | Initialize dropdowns (Add form)
     |--------------------------------------------------------------------------
     */
 
@@ -382,7 +415,114 @@ $(document).ready(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | COMPANY SELECTED
+    | Initialize dropdowns (List filters)
+    |--------------------------------------------------------------------------
+    */
+
+    $('#jtCompanyFilter').dropdown();
+    $('#jtDepartmentFilter').dropdown();
+
+    // Department filter is now scoped to whichever company is selected in
+    // the Company filter (reloaded via AJAX, same endpoint the Add form
+    // uses). "All" is always the first option so the table isn't forced
+    // to a single department.
+    function loadDepartmentFilterOptions(companyId, callback) {
+
+        var $deptFilter = $('#jtDepartmentFilter');
+
+        if (!companyId) {
+            $deptFilter.empty();
+            $deptFilter.append('<option value="">{{ __("All") }}</option>');
+            $deptFilter.dropdown('refresh');
+            if (typeof callback === 'function') callback();
+            return;
+        }
+
+        $deptFilter.parent().addClass('loading');
+
+        $.ajax({
+
+            url: '{{ url("employees/departments-by-company") }}',
+            type: 'GET',
+            data: { company_id: companyId },
+            dataType: 'json',
+
+            success: function (departments) {
+
+                $deptFilter.empty();
+                $deptFilter.append('<option value="">{{ __("All") }}</option>');
+
+                departments.forEach(function (dept) {
+                    $deptFilter.append(
+                        $('<option></option>')
+                            .attr('value', dept.department)
+                            .text(dept.department)
+                    );
+                });
+
+                $deptFilter.parent().removeClass('loading');
+                $deptFilter.dropdown('refresh');
+                $deptFilter.dropdown('set selected', '');
+
+                if (typeof callback === 'function') callback();
+
+            },
+
+            error: function () {
+
+                $deptFilter.parent().removeClass('loading');
+
+                $.notify({
+                    icon: 'ui icon times',
+                    message: 'Could not load departments for this company. Please try again.'
+                }, {
+                    type: 'danger',
+                    timer: 500
+                });
+
+                if (typeof callback === 'function') callback();
+
+            }
+
+        });
+
+    }
+
+    function applyJobtitleFilters() {
+        var companyName = $('#jtCompanyFilter').val()
+            ? $('#jtCompanyFilter option:selected').text().trim()
+            : '';
+        var departmentName = $('#jtDepartmentFilter').val();
+
+        // Job Title, Job Duties, Company, Department, Actions
+        // -> Company is column index 2, Department is column index 3.
+        var companyRegex = companyName ? '^' + $.fn.dataTable.util.escapeRegex(companyName) + '$' : '';
+        var departmentRegex = departmentName ? '^' + $.fn.dataTable.util.escapeRegex(departmentName) + '$' : '';
+
+        jobtitleTable
+            .column(2).search(companyRegex, true, false)
+            .column(3).search(departmentRegex, true, false)
+            .draw();
+    }
+
+    $('#jtCompanyFilter').on('change', function () {
+        // Department options are re-scoped to the newly selected company
+        // first (resetting to "All"), then the table filter is applied.
+        loadDepartmentFilterOptions($(this).val(), applyJobtitleFilters);
+    });
+
+    $('#jtDepartmentFilter').on('change', applyJobtitleFilters);
+
+    // Company auto-selects the first company in the list (browser default
+    // for a <select> with no blank option). On load, the Department filter
+    // is populated for that company and defaults to "All" (no department
+    // filter applied), then the table filter is applied.
+    loadDepartmentFilterOptions($('#jtCompanyFilter').val(), applyJobtitleFilters);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMPANY SELECTED (Add form)
     |--------------------------------------------------------------------------
     */
 
@@ -479,7 +619,7 @@ $(document).ready(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | DEPARTMENT SELECTED
+    | DEPARTMENT SELECTED (Add form)
     |--------------------------------------------------------------------------
     */
 
@@ -500,7 +640,7 @@ $(document).ready(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | RESET DEPARTMENT
+    | RESET DEPARTMENT (Add form)
     |--------------------------------------------------------------------------
     */
 
@@ -517,7 +657,7 @@ $(document).ready(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | BEFORE SUBMIT
+    | BEFORE SUBMIT (Add form)
     |--------------------------------------------------------------------------
     */
 

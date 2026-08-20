@@ -26,6 +26,7 @@ use App\Http\Controllers\HomeController;
 
 use App\Http\Controllers\Admin\SchedulesController;
 use App\Http\Controllers\Admin\DashboardController;
+
 use App\Http\Controllers\Admin\EmployeesController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\AttendanceController;
@@ -117,7 +118,8 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
             */
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
+          Route::get('dashboard/data', [DashboardController::class, 'ajaxData'])
+    ->name('dashboard.ajaxData');
             /*
             |--------------------------------------------------------------------------
             | Employees
