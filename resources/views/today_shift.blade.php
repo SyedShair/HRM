@@ -187,15 +187,26 @@ input:focus {
 
                 <tbody>
 
-                    @php
-                        $now = now()->format('H:i:s');
-                    @endphp
+                    {{--
+                        $nowTime and each $shift->isPresent are now
+                        computed once in SchedulesController::todayShifts()
+                        rather than here. Previously this partial recomputed
+                        "now" independently of the controller (a second,
+                        potentially different timezone/instant) and ran a
+                        fresh presence-lookup DB query for every single row
+                        (N+1 queries) even though the controller had already
+                        fetched $todayAttendance and never used it. Both are
+                        fixed by using the values the controller now passes
+                        down, so there's exactly one source of truth for
+                        "now" and one query for attendance, no matter how
+                        many rows are on this page.
+                    --}}
 
                     @forelse($shifts as $index => $shift)
 
                         @php
                             $isOff = is_null($shift->time_in) || is_null($shift->time_out);
-                            $isRunning = (!$isOff && $now >= $shift->time_in && $now <= $shift->time_out);
+                            $isRunning = (!$isOff && $nowTime >= $shift->time_in && $nowTime <= $shift->time_out);
                         @endphp
 
                         <tr class="{{ $isRunning ? 'running-row' : '' }}">
@@ -223,23 +234,13 @@ input:focus {
                             </td>
 
                             <td>
-                                
-                          @php
-    $isPresent = DB::table('tbl_people_attendance')
-        ->where('date', $todayDate)
-        ->where('reference', $shift->reference)
-        ->exists();
-@endphp
-@if($isOff)
-    <span class="badge-status badge-off">OFF DAY</span>
-
-
-
-@else
-    <span class="badge-status {{ $isPresent ? 'badge-running' : 'badge-upcoming' }}">
-        {{ $isPresent ? 'PRESENT' : 'UPCOMING' }}
-    </span>
-@endif
+                                @if($isOff)
+                                    <span class="badge-status badge-off">OFF DAY</span>
+                                @else
+                                    <span class="badge-status {{ $shift->isPresent ? 'badge-running' : 'badge-upcoming' }}">
+                                        {{ $shift->isPresent ? 'PRESENT' : 'UPCOMING' }}
+                                    </span>
+                                @endif
                             </td>
 
                             <td>
@@ -249,7 +250,7 @@ input:focus {
                                 <button 
                                     class="ui green small button make-attendance-btn"
                                     data-name="{{ $shift->employee }}"
-                                    data-ref="{{ $shift->reference ?? $shift->employee }}"
+                                    data-ref="{{ $shift->reference }}"
                                     data-timein="{{ $shift->time_in }}"
                                     data-timeout="{{ $shift->time_out }}"
                                 >

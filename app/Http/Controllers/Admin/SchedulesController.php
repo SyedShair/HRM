@@ -1,589 +1,988 @@
 <?php
 
+// namespace App\Http\Controllers\Admin;
+
+// use DB;
+// use Carbon\Carbon;
+// use App\Classes\table;
+// use App\Classes\permission;
+// use Illuminate\Http\Request;
+// use App\Http\Controllers\Controller;
+// use Barryvdh\DomPDF\Facade\Pdf;
+
+// class SchedulesController extends Controller
+// {
+//     private const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+//     /**
+//      * GET /schedules - route name('schedule') points at index(); the real
+    //  * logic lives in rota() so both /schedules and /staff-rota render the
+    //  * same employee list, filterable by ?company_id=.
+    //  */
+    // public function index(Request $request)
+    // {
+    //     return $this->rota($request);
+    // }
+
+    // /**
+    //  * GET /staff-rota
+    //  * Employee list with current-or-upcoming schedule attached,
+    //  * filterable by ?company_id=.
+    //  */
+    // public function rota(Request $request)
+    // {
+    //     if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+    //     $companies = table::company()->orderBy('company')->get();
+
+    //     $companyId = $request->query('company_id');
+    //     $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
+
+    //     if (!$companyId && $companies->isNotEmpty()) {
+    //         $companyId = $companies->first()->id;
+    //     }
+
+    //     $employees = table::people()
+    //         ->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
+    //         ->where('tbl_people.employmentstatus', 'Active')
+    //         ->when($companyId, fn ($q) => $q->where('tbl_company_data.company_id', $companyId))
+    //         ->orderBy('tbl_people.lastname')
+    //         ->get([
+    //             'tbl_people.id', 'tbl_people.firstname', 'tbl_people.lastname', 'tbl_people.avatar',
+    //             'tbl_company_data.jobposition', 'tbl_company_data.idno',
+    //         ]);
+
+    //     $today = date('Y-m-d');
+
+    //     // FIX: previously this query only ever fetched non-archived
+    //     // (archive = '0') schedules, which meant the instant a schedule
+    //     // was archived it vanished from this list completely - with no
+    //     // way to see it, print it, or permanently delete it again. We
+    //     // now pull every schedule per employee (archived or not) and
+    //     // decide which one to surface per row below: current > upcoming
+    //     // > most recently archived.
+    //     $schedules = table::schedules()
+    //         ->whereIn('reference', $employees->pluck('id'))
+    //         ->orderBy('datefrom', 'desc')
+    //         ->get()
+    //         ->groupBy('reference');
+
+    //     $employees->transform(function ($emp) use ($schedules, $today) {
+    //         $empSchedules = $schedules->get($emp->id, collect());
+    //         $activeSet = $empSchedules->where('archive', '0');
+
+    //         $emp->currentSchedule = $activeSet->first(function ($s) use ($today) {
+    //             return $s->datefrom <= $today && $s->dateto >= $today;
+    //         });
+
+    //         $emp->nextSchedule = $emp->currentSchedule
+    //             ? null
+    //             : $activeSet->filter(fn ($s) => $s->datefrom > $today)->sortBy('datefrom')->first();
+
+    //         // Only surface an archived schedule when there's nothing
+    //         // live or upcoming to show instead, so an employee who
+    //         // already has an active rota doesn't get cluttered with old
+    //         // archived ones sitting alongside it.
+    //         $emp->archivedSchedule = (!$emp->currentSchedule && !$emp->nextSchedule)
+    //             ? $empSchedules->where('archive', '1')->sortByDesc('datefrom')->first()
+    //             : null;
+
+    //         return $emp;
+    //     });
+
+    //     return view('admin.schedules.index', compact('employees', 'companies', 'companyId'));
+    // }
+
+    /**
+     * GET /schedules/new/{employeeId}
+     */
+//     public function create($employeeId)
+//     {
+//         if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+//         $employee = table::people()->where('id', $employeeId)->first();
+
+//         if (!$employee) {
+//             return redirect('staff-rota')->with('error', trans('Employee not found.'));
+//         }
+
+//         $companyData = table::companydata()->where('reference', $employeeId)->first();
+//         $days = self::DAYS;
+
+//         return view('admin.schedules.form', compact('employee', 'companyData', 'days'));
+//     }
+
+//     /**
+//      * POST /schedules/add
+//      */
+//     public function add(Request $request)
+//     {
+//         if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+//         $request->validate([
+//             'reference'    => 'required|integer|exists:tbl_people,id',
+//             'datefrom'     => 'required|date',
+//             'dateto'       => 'required|date|after_or_equal:datefrom',
+//             'weekly_hours' => 'required|numeric|min:0|max:168',
+//             'is_off'       => 'nullable|array',
+//             'time_in'      => 'nullable|array',
+//             'time_in.*'    => 'nullable|date_format:H:i',
+//             'time_out'     => 'nullable|array',
+//             'time_out.*'   => 'nullable|date_format:H:i',
+//         ]);
+
+//         $employee = table::people()->where('id', $request->reference)->first();
+
+//         if (!$employee) {
+//             return redirect('staff-rota')->withInput()->with('error', trans('Employee not found.'));
+//         }
+
+//         $companyData = table::companydata()->where('reference', $request->reference)->first();
+
+//         $overlap = table::schedules()
+//             ->where('reference', $request->reference)
+//             ->where('archive', '0')
+//             ->where('datefrom', '<=', $request->dateto)
+//             ->where('dateto', '>=', $request->datefrom)
+//             ->exists();
+
+//         if ($overlap) {
+//             return back()->withInput()->with('error', trans('This employee already has a schedule that overlaps these dates.'));
+//         }
+
+//         $totalHours = $this->calculateScheduledHours($request);
+//         $weeklyHoursAllowed = (float) $request->weekly_hours;
+
+//         if ($totalHours > $weeklyHoursAllowed + 0.001) {
+//             return back()->withInput()->with('error', trans(
+//                 'The scheduled hours (:total) exceed the weekly hours allowed (:allowed). Please adjust the daily times so the total does not go over the limit.',
+//                 ['total' => number_format($totalHours, 2), 'allowed' => number_format($weeklyHoursAllowed, 2)]
+//             ));
+//         }
+
+//         try {
+//             DB::transaction(function () use ($request, $employee, $companyData, $weeklyHoursAllowed) {
+//                 $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed);
+//             });
+//         } catch (\Exception $e) {
+//             \Log::error('Failed to create schedule: '.$e->getMessage());
+//             return back()->withInput()->with('error', trans('Something went wrong while saving this schedule. Please try again.'));
+//         }
+
+//         return redirect('staff-rota')->with('success', trans('Weekly schedule has been created!'));
+//     }
+
+//     /**
+//      * GET /schedules/edit/{id}
+//      */
+//     public function edit($id)
+//     {
+//         if (permission::permitted('schedules-edit') == 'fail') { return redirect()->route('denied'); }
+
+//         $schedule = table::schedules()->where('id', $id)->first();
+
+//         if (!$schedule) {
+//             return redirect('staff-rota')->with('error', trans('Schedule not found.'));
+//         }
+
+//         $employee = table::people()->where('id', $schedule->reference)->first();
+//         $companyData = table::companydata()->where('reference', $schedule->reference)->first();
+
+//         $shifts = table::weeklyshifts()
+//             ->where('schedual_id', $schedule->id)
+//             ->get()
+//             ->keyBy('day');
+
+//         $days = self::DAYS;
+
+//         return view('admin.schedules.form', compact('employee', 'companyData', 'days', 'schedule', 'shifts'));
+//     }
+
+//     /**
+//      * POST /schedules/update - id comes from a hidden field, not the URL.
+//      */
+//     public function update(Request $request)
+//     {
+//         if (permission::permitted('schedules-edit') == 'fail') { return redirect()->route('denied'); }
+
+//         $request->validate([
+//             'id'           => 'required|integer|exists:tbl_people_schedules,id',
+//             'datefrom'     => 'required|date',
+//             'dateto'       => 'required|date|after_or_equal:datefrom',
+//             'weekly_hours' => 'required|numeric|min:0|max:168',
+//             'is_off'       => 'nullable|array',
+//             'time_in'      => 'nullable|array',
+//             'time_in.*'    => 'nullable|date_format:H:i',
+//             'time_out'     => 'nullable|array',
+//             'time_out.*'   => 'nullable|date_format:H:i',
+//         ]);
+
+//         $schedule = table::schedules()->where('id', $request->id)->first();
+
+//         if (!$schedule) {
+//             return redirect('staff-rota')->with('error', trans('Schedule not found.'));
+//         }
+
+//         $employee = table::people()->where('id', $schedule->reference)->first();
+//         $companyData = table::companydata()->where('reference', $schedule->reference)->first();
+
+//         $overlap = table::schedules()
+//             ->where('reference', $schedule->reference)
+//             ->where('archive', '0')
+//             ->where('id', '!=', $schedule->id)
+//             ->where('datefrom', '<=', $request->dateto)
+//             ->where('dateto', '>=', $request->datefrom)
+//             ->exists();
+
+//         if ($overlap) {
+//             return back()->withInput()->with('error', trans('This employee already has another schedule that overlaps these dates.'));
+//         }
+
+//         $totalHours = $this->calculateScheduledHours($request);
+//         $weeklyHoursAllowed = (float) $request->weekly_hours;
+
+//         if ($totalHours > $weeklyHoursAllowed + 0.001) {
+//             return back()->withInput()->with('error', trans(
+//                 'The scheduled hours (:total) exceed the weekly hours allowed (:allowed). The rota was not updated - please adjust the daily times.',
+//                 ['total' => number_format($totalHours, 2), 'allowed' => number_format($weeklyHoursAllowed, 2)]
+//             ));
+//         }
+
+//         try {
+//             DB::transaction(function () use ($request, $employee, $companyData, $schedule, $weeklyHoursAllowed) {
+//                 $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed, $schedule);
+//             });
+//         } catch (\Exception $e) {
+//             \Log::error('Failed to update schedule #'.$request->id.': '.$e->getMessage());
+//             return back()->withInput()->with('error', trans('Something went wrong while updating this schedule. Please try again.'));
+//         }
+
+//         return redirect('staff-rota')->with('success', trans('Weekly schedule has been updated!'));
+//     }
+
+//     /**
+//      * GET /schedules/archive/{id}
+//      */
+//     public function archive($id)
+//     {
+//         if (permission::permitted('schedules-archive') == 'fail') { return redirect()->route('denied'); }
+
+//         table::schedules()->where('id', $id)->update(['archive' => '1']);
+//         table::weeklyshifts()->where('schedual_id', $id)->update(['active' => 0]);
+
+//         return redirect('staff-rota')->with('success', trans('Schedule has been archived.'));
+//     }
+
+//     /**
+//      * GET /schedules/delete/{id}
+//      * Permanent delete - used both for direct deletes and for the
+//      * "Delete" action shown on the Rota page against an archived
+//      * schedule (see admin.schedules.index).
+//      */
+//     public function delete($id)
+//     {
+//         if (permission::permitted('schedules-delete') == 'fail') { return redirect()->route('denied'); }
+
+//         table::weeklyshifts()->where('schedual_id', $id)->delete();
+//         table::schedules()->where('id', $id)->delete();
+
+//         return redirect('staff-rota')->with('success', trans('Schedule has been deleted.'));
+//     }
+
+//     /**
+//      * GET /rota/pdf/{id}
+//      * Printable single-employee weekly schedule, viewable inline (not
+//      * force-downloaded). $id is a tbl_people_schedules row id, same as
+//      * edit()/archive()/delete() above - works for active, upcoming, or
+//      * archived schedules alike.
+//      */
+//     public function todayShifts()
+// {
+//     $todayDay  = now()->format('l');
+//     $todayDate = now()->format('Y-m-d');
+
+//     $employees = DB::table('tbl_people')->get();
+
+//     $shifts = DB::table('tbl_people_schedules as s')
+//         ->join('weekly_shifts as w', 's.id', '=', 'w.schedual_id')
+//         ->where('w.day', $todayDay)
+//         ->where('w.active', 1)
+//         ->where(function($q) use ($todayDate) {
+//             $q->whereDate('s.datefrom', '<=', $todayDate)
+//               ->where(function($q2) use ($todayDate) {
+//                   $q2->whereDate('s.dateto', '>=', $todayDate)
+//                      ->orWhereNull('s.dateto');
+//               });
+//         })
+//         ->select('s.employee','w.day','w.time_in','w.time_out','s.reference')
+//         ->get();
+
+//     // ✅ ADD THIS
+//    $todayAttendance = DB::table('tbl_people_attendance')
+//     ->where('date', $todayDate)->get();
+//     return view('today_shift', compact(
+//         'shifts',
+//         'todayDay',
+//         'todayDate',
+//         'employees',
+//         'todayAttendance'
+//     ));
+// }
+//     public function rotaPdf($id)
+//     {
+//         if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+//         $schedule = table::schedules()->where('id', $id)->first();
+
+//         if (!$schedule) {
+//             return redirect('staff-rota')->with('error', trans('Schedule not found.'));
+//         }
+
+//         $employee = table::people()->where('id', $schedule->reference)->first();
+//         $companyData = table::companydata()->where('reference', $schedule->reference)->first();
+
+//         $shifts = table::weeklyshifts()
+//             ->where('schedual_id', $schedule->id)
+//             ->get()
+//             ->keyBy('day');
+
+//         $days = self::DAYS;
+
+//         $pdf = Pdf::loadView('admin.schedules.pdf', compact('employee', 'companyData', 'schedule', 'shifts', 'days'))
+//             ->setPaper('a4', 'portrait');
+
+//         $filename = mb_strtoupper($employee->firstname.'-'.$employee->lastname.'-weekly-schedule').'.pdf';
+
+//         return $pdf->stream($filename);
+//     }
+
+//     /**
+//      * Sums scheduled hours across all non-off days from the submitted
+//      * form. Shared by add() and update() so the cap is enforced identically.
+//      */
+//     private function calculateScheduledHours(Request $request): float
+//     {
+//         $isOff = $request->input('is_off', []);
+//         $timeIn = $request->input('time_in', []);
+//         $timeOut = $request->input('time_out', []);
+
+//         $totalMinutes = 0;
+
+//         foreach (self::DAYS as $day) {
+//             if (in_array($day, $isOff)) {
+//                 continue;
+//             }
+
+//             $in = $timeIn[$day] ?? null;
+//             $out = $timeOut[$day] ?? null;
+
+//             if ($in && $out) {
+//                 $minutes = (strtotime($out) - strtotime($in)) / 60;
+//                 if ($minutes < 0) {
+//                     $minutes += 24 * 60; // overnight shift
+//                 }
+//                 $totalMinutes += $minutes;
+//             }
+//         }
+
+//         return round($totalMinutes / 60, 2);
+//     }
+
+//     /**
+//      * Writes the tbl_people_schedules summary row and its 7
+//      * weekly_shifts detail rows. hours = the weekly hours ALLOWED
+//      * figure the user entered (the contracted target), not a computed total.
+//      */
+//     private function saveSchedule(Request $request, $employee, $companyData, float $weeklyHoursAllowed, $existingSchedule = null)
+//     {
+//         $isOff = $request->input('is_off', []);
+//         $timeIn = $request->input('time_in', []);
+//         $timeOut = $request->input('time_out', []);
+
+//         $restDays = [];
+//         $firstWorkingTimeIn = null;
+//         $firstWorkingTimeOut = null;
+
+//         foreach (self::DAYS as $day) {
+//             if (in_array($day, $isOff)) {
+//                 $restDays[] = $day;
+//                 continue;
+//             }
+
+//             $in = $timeIn[$day] ?? null;
+//             $out = $timeOut[$day] ?? null;
+
+//             if ($in && $out && $firstWorkingTimeIn === null) {
+//                 $firstWorkingTimeIn = $in;
+//                 $firstWorkingTimeOut = $out;
+//             }
+//         }
+
+//         $employeeName = mb_strtoupper($employee->lastname.', '.$employee->firstname);
+//         $idno = $companyData->idno ?? null;
+
+//         $scheduleAttributes = [
+//             'reference' => $employee->id,
+//             'idno'      => $idno,
+//             'employee'  => $employeeName,
+//             'intime'    => $firstWorkingTimeIn,
+//             'outime'    => $firstWorkingTimeOut,
+//             'datefrom'  => $request->datefrom,
+//             'dateto'    => $request->dateto,
+//             'hours'     => (string) $weeklyHoursAllowed,
+//             'restday'   => implode(',', $restDays),
+//             'archive'   => '0',
+//         ];
+
+//         if ($existingSchedule) {
+//             table::schedules()->where('id', $existingSchedule->id)->update($scheduleAttributes);
+//             $scheduleId = $existingSchedule->id;
+//             table::weeklyshifts()->where('schedual_id', $scheduleId)->delete();
+//         } else {
+//             $scheduleId = table::schedules()->insertGetId($scheduleAttributes);
+//         }
+
+//         $shiftRows = [];
+//         foreach (self::DAYS as $day) {
+//             $dayOff = in_array($day, $isOff);
+//             $in = !$dayOff ? ($timeIn[$day] ?? null) : null;
+//             $out = !$dayOff ? ($timeOut[$day] ?? null) : null;
+
+//             $shiftRows[] = [
+//                 'schedual_id' => $scheduleId,
+//                 'day'         => $day,
+//                 'time_in'     => $in ?: null,
+//                 'time_out'    => $out ?: null,
+//                 'is_off'      => $dayOff ? 1 : 0,
+//                 'active'      => 1,
+//                 'created_at'  => now(),
+//                 'updated_at'  => now(),
+//             ];
+//         }
+
+//         table::weeklyshifts()->insert($shiftRows);
+//     }
+
+    
+// }
+
+
+
 namespace App\Http\Controllers\Admin;
+
 use DB;
-use PDF;
+use Carbon\Carbon;
 use App\Classes\table;
 use App\Classes\permission;
-use App\Http\Requests;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use App\Http\Controllers\Controller;
-use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class SchedulesController extends Controller
 {
-    /**
-     * Canonical day order used everywhere a weekly rota is built or
-     * displayed - Monday first, matching the Weekly Rota / PDF views.
-     */
-    private const WEEK_DAYS = [
-        'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
-    ];
+    private const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-    public function index() 
+    /**
+     * GET /schedules - route name('schedule') points at index(); the real
+     * logic lives in rota() so both /schedules and /staff-rota render the
+     * same employee list, filterable by ?company_id=.
+     */
+    public function index(Request $request)
     {
-        if (permission::permitted('schedules')=='fail'){ return redirect()->route('denied'); }
-        
-        $employee = table::people()->get();
-        $schedules = table::schedules()->get();
-        $tf = table::settings()->value("time_format");
-    
-        return view('admin.schedules', compact('employee', 'schedules', 'tf'));
+        return $this->rota($request);
     }
 
     /**
-     * Add a new schedule for an employee: the company's open/close time
-     * for that employee, the date range it applies over, and their
-     * weekly rest days. Saving this now ALSO auto-generates the full
-     * 7-day weekly rota (weekly_shifts) in one step - every non-rest
-     * day gets the same open/close time, every rest day is marked off.
-     * The separate "Weekly Rota Setup" modal remains available
-     * afterward for one-off exceptions to specific days.
+     * GET /staff-rota
+     * Employee list with current-or-upcoming schedule attached,
+     * filterable by ?company_id=.
      */
-    public function add(Request $request) 
+    public function rota(Request $request)
     {
-        if (permission::permitted('schedules-add')=='fail'){ return redirect()->route('denied'); }
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
 
-        $v = $request->validate([
-            'id' => 'required|max:20',
-            'employee' => 'required|max:100',
-            'intime' => 'required|max:20',
-            'outime' => 'required|max:20',
-            'datefrom' => 'required|date|max:15',
-            'dateto' => 'required|date|max:15',
-            'hours' => 'required|max:6',
-            'restday' => 'nullable|array',
-            'restday.*' => 'in:' . implode(',', self::WEEK_DAYS),
-        ]);
+        $companies = table::company()->orderBy('company')->get();
 
-        $id = $request->id;
-        $employee = mb_strtoupper($request->employee);
-        $intime = date("h:i A", strtotime($request->intime));
-        $outime = date("h:i A", strtotime($request->outime));
-        $datefrom = $request->datefrom;
-        $dateto = $request->dateto;
-        $hours = $request->hours;
-        $restDays = $request->restday ?? [];
-        $restday = !empty($restDays) ? implode(', ', $restDays) : null;
+        $companyId = $request->query('company_id');
+        $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
 
-        $ref = table::schedules()->where([['reference', $id],['archive', 0]])->exists();
-
-        if ($ref == 1) 
-        {
-            return redirect('schedules')->with('error', trans("Oops! This employee has schedule already. Please arhive the present schedule to add new schedule."));
+        if (!$companyId && $companies->isNotEmpty()) {
+            $companyId = $companies->first()->id;
         }
 
-        $emp_id = table::companydata()->where('reference', $id)->value('idno');
+        $employees = table::people()
+            ->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
+            ->where('tbl_people.employmentstatus', 'Active')
+            ->when($companyId, fn ($q) => $q->where('tbl_company_data.company_id', $companyId))
+            ->orderBy('tbl_people.lastname')
+            ->get([
+                'tbl_people.id', 'tbl_people.firstname', 'tbl_people.lastname', 'tbl_people.avatar',
+                'tbl_company_data.jobposition', 'tbl_company_data.idno',
+            ]);
 
-        $scheduleId = table::schedules()->insertGetId([
-            'reference' => $id,
-            'idno' => $emp_id,
-            'employee' => $employee,
-            'intime' => $intime,
-            'outime' => $outime,
-            'datefrom' => $datefrom, 
-            'dateto' => $dateto,
-            'hours' => $hours,
-            'restday' => $restday,
-            'archive' => '0',
-        ]);
+        $today = date('Y-m-d');
 
-        // Build the 7-day weekly rota straight from the open/close time
-        // and rest days just submitted - this is what previously had to
-        // be typed in by hand, day by day, via the separate modal.
-        $this->generateWeeklyShiftsFromSchedule($scheduleId, $request->intime, $request->outime, $restDays);
+        // FIX: previously this query only ever fetched non-archived
+        // (archive = '0') schedules, which meant the instant a schedule
+        // was archived it vanished from this list completely - with no
+        // way to see it, print it, or permanently delete it again. We
+        // now pull every schedule per employee (archived or not) and
+        // decide which one to surface per row below: current > upcoming
+        // > most recently archived.
+        $schedules = table::schedules()
+            ->whereIn('reference', $employees->pluck('id'))
+            ->orderBy('datefrom', 'desc')
+            ->get()
+            ->groupBy('reference');
 
-        return redirect('schedules')->with('success', trans("New Schedule Added!"));
-    }
+        $employees->transform(function ($emp) use ($schedules, $today) {
+            $empSchedules = $schedules->get($emp->id, collect());
+            $activeSet = $empSchedules->where('archive', '0');
 
-    public function edit($id, Request $request) 
-    {
-        if (permission::permitted('schedules-edit')=='fail'){ return redirect()->route('denied'); }
+            $emp->currentSchedule = $activeSet->first(function ($s) use ($today) {
+                return $s->datefrom <= $today && $s->dateto >= $today;
+            });
 
-        $s = table::schedules()->where('id', $id)->first();
-        $r = !empty($s->restday) ? explode(', ', $s->restday) : [];
-        $e_id = ($s->id == null) ? 0 : Crypt::encryptString($s->id) ;
-        $tf = table::settings()->value("time_format");
-        
-        return view('admin.edits.edit-schedule', compact('s','r', 'e_id', 'tf'));
+            $emp->nextSchedule = $emp->currentSchedule
+                ? null
+                : $activeSet->filter(fn ($s) => $s->datefrom > $today)->sortBy('datefrom')->first();
+
+            // Only surface an archived schedule when there's nothing
+            // live or upcoming to show instead, so an employee who
+            // already has an active rota doesn't get cluttered with old
+            // archived ones sitting alongside it.
+            $emp->archivedSchedule = (!$emp->currentSchedule && !$emp->nextSchedule)
+                ? $empSchedules->where('archive', '1')->sortByDesc('datefrom')->first()
+                : null;
+
+            return $emp;
+        });
+
+        return view('admin.schedules.index', compact('employees', 'companies', 'companyId'));
     }
 
     /**
-     * Update an existing schedule. Same as add(): saving here
-     * regenerates the full weekly rota from the (possibly changed)
-     * open/close time and rest days, so the rota always stays in sync
-     * with whatever the schedule says. Any one-off day exceptions set
-     * via the Weekly Rota Setup modal will be reset back to the
-     * schedule's standard hours when this runs - by design, since this
-     * is meant to be the single source of truth for the standard week.
+     * GET /schedules/new/{employeeId}
      */
-    public function update(Request $request) 
+    public function create($employeeId)
     {
-        if (permission::permitted('schedules-edit')=='fail'){ return redirect()->route('denied'); }
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
 
-        $v = $request->validate([
-            'id' => 'required|max:200',
-            'intime' => 'required|max:20',
-            'outime' => 'required|max:20',
-            'datefrom' => 'required|date|max:15',
-            'dateto' => 'required|date|max:15',
-            'hours' => 'required|max:6',
-            'restday' => 'nullable|array',
-            'restday.*' => 'in:' . implode(',', self::WEEK_DAYS),
-        ]);
+        $employee = table::people()->where('id', $employeeId)->first();
 
-        $id = Crypt::decryptString($request->id);
-        $intime = date("h:i A", strtotime($request->intime));
-        $outime = date("h:i A", strtotime($request->outime));
-        $datefrom = $request->datefrom; 
-        $dateto = $request->dateto; 
-        $hours = $request->hours;
-        $restDays = $request->restday ?? [];
-        $restday = !empty($restDays) ? implode(', ', $restDays) : null;
+        if (!$employee) {
+            return redirect('staff-rota')->with('error', trans('Employee not found.'));
+        }
 
-        table::schedules()
-        ->where('id', $id)
-        ->update([
-                'intime' => $intime,
-                'outime' => $outime,
-                'datefrom' => $datefrom,
-                'dateto' => $dateto,
-                'hours' => $hours,
-                'restday' => $restday,
-        ]);
+        $companyData = table::companydata()->where('reference', $employeeId)->first();
+        $days = self::DAYS;
 
-        $this->generateWeeklyShiftsFromSchedule($id, $request->intime, $request->outime, $restDays);
-
-        return redirect('schedules')->with('success', trans("Schedule has been updated!"));
+        return view('admin.schedules.form', compact('employee', 'companyData', 'days'));
     }
-
-    public function delete($id, Request $request) 
-    {
-        if (permission::permitted('schedules-delete')=='fail'){ return redirect()->route('denied'); }
-
-        table::schedules()->where('id', $id)->delete();
-
-        // Weekly shifts are only meaningful attached to a schedule -
-        // clean them up too, so deleted schedules don't leave orphaned
-        // rota rows behind that could resurface if the id is reused.
-        DB::table('weekly_shifts')->where('schedual_id', $id)->delete();
-
-        return redirect('schedules')->with('success', trans("Deleted!"));
-    }
-
-    public function archive($id, Request $request)
-    {
-		if (permission::permitted('schedules-archive')=='fail'){ return redirect()->route('denied'); }
-        
-		$id = $request->id;
-		table::schedules()->where('id', $id)->update(['archive' => '1']);
-
-    	return redirect('schedules')->with('success', trans("Schedule has been archived!"));
-   	}
 
     /**
-     * GET WEEKLY DATA (for the "Weekly Rota Setup" override modal).
+     * POST /schedules/add
      */
-    public function getWeekly($id)
+    public function add(Request $request)
     {
-        $schedule = DB::table('tbl_people_schedules')
-            ->where('id', $id)
-            ->first();
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+        $request->validate([
+            'reference'    => 'required|integer|exists:tbl_people,id',
+            'datefrom'     => 'required|date',
+            'dateto'       => 'required|date|after_or_equal:datefrom',
+            'weekly_hours' => 'required|numeric|min:0|max:168',
+            'is_off'       => 'nullable|array',
+            'time_in'      => 'nullable|array',
+            'time_in.*'    => 'nullable|date_format:H:i',
+            'time_out'     => 'nullable|array',
+            'time_out.*'   => 'nullable|date_format:H:i',
+        ]);
+
+        $employee = table::people()->where('id', $request->reference)->first();
+
+        if (!$employee) {
+            return redirect('staff-rota')->withInput()->with('error', trans('Employee not found.'));
+        }
+
+        $companyData = table::companydata()->where('reference', $request->reference)->first();
+
+        $overlap = table::schedules()
+            ->where('reference', $request->reference)
+            ->where('archive', '0')
+            ->where('datefrom', '<=', $request->dateto)
+            ->where('dateto', '>=', $request->datefrom)
+            ->exists();
+
+        if ($overlap) {
+            return back()->withInput()->with('error', trans('This employee already has a schedule that overlaps these dates.'));
+        }
+
+        $totalHours = $this->calculateScheduledHours($request);
+        $weeklyHoursAllowed = (float) $request->weekly_hours;
+
+        if ($totalHours > $weeklyHoursAllowed + 0.001) {
+            return back()->withInput()->with('error', trans(
+                'The scheduled hours (:total) exceed the weekly hours allowed (:allowed). Please adjust the daily times so the total does not go over the limit.',
+                ['total' => number_format($totalHours, 2), 'allowed' => number_format($weeklyHoursAllowed, 2)]
+            ));
+        }
+
+        try {
+            DB::transaction(function () use ($request, $employee, $companyData, $weeklyHoursAllowed) {
+                $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed);
+            });
+        } catch (\Exception $e) {
+            \Log::error('Failed to create schedule: '.$e->getMessage());
+            return back()->withInput()->with('error', trans('Something went wrong while saving this schedule. Please try again.'));
+        }
+
+        return redirect('staff-rota')->with('success', trans('Weekly schedule has been created!'));
+    }
+
+    /**
+     * GET /schedules/edit/{id}
+     */
+    public function edit($id)
+    {
+        if (permission::permitted('schedules-edit') == 'fail') { return redirect()->route('denied'); }
+
+        $schedule = table::schedules()->where('id', $id)->first();
 
         if (!$schedule) {
-            return response()->json([
-                'restDays' => [],
-                'shifts' => []
-            ]);
+            return redirect('staff-rota')->with('error', trans('Schedule not found.'));
         }
 
-        $restDays = [];
-        if (!empty($schedule->restday)) {
-            $restDays = array_map('trim', explode(',', $schedule->restday));
-        }
+        $employee = table::people()->where('id', $schedule->reference)->first();
+        $companyData = table::companydata()->where('reference', $schedule->reference)->first();
 
-        $shifts = DB::table('weekly_shifts')
-            ->where('schedual_id', $id)
-            ->where('active', 1)
+        $shifts = table::weeklyshifts()
+            ->where('schedual_id', $schedule->id)
             ->get()
             ->keyBy('day');
 
-        return response()->json([
-            'restDays' => $restDays,
-            'shifts'   => $shifts
-        ]);
+        $days = self::DAYS;
+
+        return view('admin.schedules.form', compact('employee', 'companyData', 'days', 'schedule', 'shifts'));
     }
 
     /**
-     * Manual per-day override, used by the "Weekly Rota Setup" modal
-     * for one-off exceptions on top of the schedule's standard hours
-     * (e.g. one day this week they finish early). This intentionally
-     * only touches the days actually submitted - it does not regenerate
-     * the whole week from scratch like generateWeeklyShiftsFromSchedule()
-     * does, so it's safe to use for a single-day tweak.
+     * POST /schedules/update - id comes from a hidden field, not the URL.
      */
-    public function storeWeekly(Request $request)
+    public function update(Request $request)
     {
-        $scheduleId = $request->schedule_id;
+        if (permission::permitted('schedules-edit') == 'fail') { return redirect()->route('denied'); }
 
-        $schedule = DB::table('tbl_people_schedules')
-            ->where('id', $scheduleId)
-            ->first();
+        $request->validate([
+            'id'           => 'required|integer|exists:tbl_people_schedules,id',
+            'datefrom'     => 'required|date',
+            'dateto'       => 'required|date|after_or_equal:datefrom',
+            'weekly_hours' => 'required|numeric|min:0|max:168',
+            'is_off'       => 'nullable|array',
+            'time_in'      => 'nullable|array',
+            'time_in.*'    => 'nullable|date_format:H:i',
+            'time_out'     => 'nullable|array',
+            'time_out.*'   => 'nullable|date_format:H:i',
+        ]);
+
+        $schedule = table::schedules()->where('id', $request->id)->first();
 
         if (!$schedule) {
-            return back()->with('error', 'Schedule not found');
+            return redirect('staff-rota')->with('error', trans('Schedule not found.'));
         }
 
-        $restDays = [];
-        if (!empty($schedule->restday)) {
-            $restDays = array_map('trim', explode(',', $schedule->restday));
+        $employee = table::people()->where('id', $schedule->reference)->first();
+        $companyData = table::companydata()->where('reference', $schedule->reference)->first();
+
+        $overlap = table::schedules()
+            ->where('reference', $schedule->reference)
+            ->where('archive', '0')
+            ->where('id', '!=', $schedule->id)
+            ->where('datefrom', '<=', $request->dateto)
+            ->where('dateto', '>=', $request->datefrom)
+            ->exists();
+
+        if ($overlap) {
+            return back()->withInput()->with('error', trans('This employee already has another schedule that overlaps these dates.'));
         }
 
-        $shifts = $request->shift ?? [];
-        if (empty($shifts)) {
-            return back()->with('error', 'No shift data provided');
+        $totalHours = $this->calculateScheduledHours($request);
+        $weeklyHoursAllowed = (float) $request->weekly_hours;
+
+        if ($totalHours > $weeklyHoursAllowed + 0.001) {
+            return back()->withInput()->with('error', trans(
+                'The scheduled hours (:total) exceed the weekly hours allowed (:allowed). The rota was not updated - please adjust the daily times.',
+                ['total' => number_format($totalHours, 2), 'allowed' => number_format($weeklyHoursAllowed, 2)]
+            ));
         }
 
-        foreach ($shifts as $day => $time) {
-
-            $timeIn  = $time['in'] ?? null;
-            $timeOut = $time['out'] ?? null;
-
-            $isOff = in_array($day, $restDays) || !$timeIn || !$timeOut;
-
-            DB::table('weekly_shifts')->updateOrInsert(
-                [
-                    'schedual_id' => $scheduleId,
-                    'day'         => $day,
-                ],
-                [
-                    'time_in'  => $isOff ? null : $this->toTimeOnly($timeIn),
-                    'time_out' => $isOff ? null : $this->toTimeOnly($timeOut),
-                    'is_off'   => $isOff ? 1 : 0,
-                    'active'   => 1,
-                ]
-            );
+        try {
+            DB::transaction(function () use ($request, $employee, $companyData, $schedule, $weeklyHoursAllowed) {
+                $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed, $schedule);
+            });
+        } catch (\Exception $e) {
+            \Log::error('Failed to update schedule #'.$request->id.': '.$e->getMessage());
+            return back()->withInput()->with('error', trans('Something went wrong while updating this schedule. Please try again.'));
         }
 
-        return back()->with('success', 'Weekly rota saved successfully');
+        return redirect('staff-rota')->with('success', trans('Weekly schedule has been updated!'));
     }
 
-    public function pdf($id)
+    /**
+     * GET /schedules/archive/{id}
+     */
+    public function archive($id)
     {
-        $schedule = DB::table('tbl_people_schedules')
-            ->where('id', $id)
-            ->first();
+        if (permission::permitted('schedules-archive') == 'fail') { return redirect()->route('denied'); }
 
-        if (!$schedule) {
-            return back()->with('error', 'Schedule not found');
-        }
+        table::schedules()->where('id', $id)->update(['archive' => '1']);
+        table::weeklyshifts()->where('schedual_id', $id)->update(['active' => 0]);
 
-        $shifts = DB::table('weekly_shifts')
-            ->where('schedual_id', $id)
-            ->where('active', 1)
-            ->orderByRaw("FIELD(day,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')")
-            ->get();
-
-        $data = [
-            'schedule' => $schedule,
-            'shifts' => $shifts
-        ];
-
-        $pdf = PDF::loadView('weekly-shift', $data)
-            ->setOptions(['isRemoteEnabled' => true]);
-
-        return $pdf->stream('weekly-shift-'.$schedule->employee.'.pdf');
+        return redirect('staff-rota')->with('success', trans('Schedule has been archived.'));
     }
 
+    /**
+     * GET /schedules/delete/{id}
+     * Permanent delete - used both for direct deletes and for the
+     * "Delete" action shown on the Rota page against an archived
+     * schedule (see admin.schedules.index).
+     */
+    public function delete($id)
+    {
+        if (permission::permitted('schedules-delete') == 'fail') { return redirect()->route('denied'); }
+
+        table::weeklyshifts()->where('schedual_id', $id)->delete();
+        table::schedules()->where('id', $id)->delete();
+
+        return redirect('staff-rota')->with('success', trans('Schedule has been deleted.'));
+    }
+
+    /**
+     * GET /today-shifts
+     * Live "who's on shift today" board used to take attendance. Was
+     * previously showing inaccurate results for several stacked reasons
+     * - all fixed below:
+     *
+     *  1. No `archive = '0'` filter on tbl_people_schedules, so an
+     *     employee whose schedule had since been archived (they left,
+     *     or the schedule was superseded by a new one) still showed up
+     *     as scheduled to work today.
+     *  2. No join back to tbl_people / employmentstatus filter, so an
+     *     employee who left without their schedule ever being archived
+     *     would still appear.
+     *  3. "Today" was computed with now()'s default server timezone,
+     *     which may not be Europe/London - the attendance modal's own
+     *     JS explicitly re-adjusts to UK-local time, which is a strong
+     *     sign the two were drifting apart near midnight/DST changes.
+     *     Anchored below to config('app.timezone') instead (set that to
+     *     'Europe/London' in config/app.php if it isn't already).
+     *  4. $todayAttendance was fetched but never actually used - the
+     *     blade instead ran a fresh "is this employee present" query
+     *     PER ROW (an N+1 query problem). Presence is now resolved once
+     *     here and attached to each shift as ->isPresent.
+     *  5. No permission check at all, unlike every other method on this
+     *     controller - added the same gate rota() uses; change the
+     *     permission key below if this page has its own dedicated one.
+     *  6. No `->distinct()` - guards against duplicate rows for legacy
+     *     data saved before the overlap check existed elsewhere in this
+     *     controller.
+     */
     public function todayShifts()
     {
-        $todayDay  = now()->format('l');
-        $todayDate = now()->format('Y-m-d');
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
 
-        $employees = DB::table('tbl_people')->get();
+        // Anchor everything "today" to a single Carbon instance in the
+        // app's configured timezone, so the day name, the date, and the
+        // "is this shift running right now" check in the view can never
+        // disagree with each other.
+        $now = Carbon::now(config('app.timezone'));
+        $todayDay  = $now->format('l');
+        $todayDate = $now->format('Y-m-d');
+        $nowTime   = $now->format('H:i'); // matches the H:i format time_in/time_out are stored/validated in
 
         $shifts = DB::table('tbl_people_schedules as s')
             ->join('weekly_shifts as w', 's.id', '=', 'w.schedual_id')
+            ->join('tbl_people as p', 'p.id', '=', 's.reference')
             ->where('w.day', $todayDay)
             ->where('w.active', 1)
-            ->where('w.is_off', 0)
-            ->where(function($q) use ($todayDate) {
+            // Archived schedules must never surface on today's shift
+            // board - see fix note #1 above.
+            ->where('s.archive', '0')
+            // Only currently-active employees - see fix note #2 above.
+            ->where('p.employmentstatus', 'Active')
+            ->where(function ($q) use ($todayDate) {
                 $q->whereDate('s.datefrom', '<=', $todayDate)
-                  ->where(function($q2) use ($todayDate) {
+                  ->where(function ($q2) use ($todayDate) {
                       $q2->whereDate('s.dateto', '>=', $todayDate)
                          ->orWhereNull('s.dateto');
                   });
             })
-            ->select('s.employee','w.day','w.time_in','w.time_out','s.reference')
+            ->select('s.employee', 'w.day', 'w.time_in', 'w.time_out', 's.reference')
+            ->distinct()
+            ->orderBy('s.employee')
             ->get();
 
         $todayAttendance = DB::table('tbl_people_attendance')
-            ->where('date', $todayDate)->get();
+            ->where('date', $todayDate)
+            ->get();
+
+        // Resolved once here instead of re-querying per row in the
+        // blade - see fix note #4 above.
+        $presentReferences = $todayAttendance->pluck('reference')->all();
+
+        $shifts->transform(function ($shift) use ($presentReferences) {
+            $shift->isPresent = in_array($shift->reference, $presentReferences);
+            return $shift;
+        });
 
         return view('today_shift', compact(
             'shifts',
             'todayDay',
             'todayDate',
-            'employees',
+            'nowTime',
             'todayAttendance'
         ));
     }
 
-    public function rotaPdf()
-    {
-        $employees = DB::table('tbl_people_schedules as s')
-            ->leftJoin('tbl_people as p', 'p.id', '=', 's.reference')
-            ->select(
-                's.reference',
-                's.idno',
-                'p.firstname',
-                'p.lastname'
-            )
-            ->where('s.archive', 0)
-            ->groupBy(
-                's.reference',
-                's.idno',
-                'p.firstname',
-                'p.lastname'
-            )
-            ->get();
-
-        $weeklyShifts = DB::table('weekly_shifts as ws')
-            ->leftJoin('tbl_people_schedules as s', 's.id', '=', 'ws.schedual_id')
-            ->select(
-                'ws.day',
-                'ws.time_in',
-                'ws.time_out',
-                'ws.is_off',
-                's.reference'
-            )
-            ->where('ws.active', 1)
-            ->get();
-
-        $pdf = Pdf::loadView('rota-pdf', [
-            'employees' => $employees,
-            'weeklyShifts' => $weeklyShifts,
-            'days' => self::WEEK_DAYS,
-        ]);
-
-        $pdf->setPaper('a4', 'landscape');
-
-        return $pdf->stream('weekly-rota.pdf');
-    }
-
-    public function rota()
-    {
-        $employees = DB::table('tbl_people_schedules as s')
-            ->leftJoin('tbl_people as p', 'p.id', '=', 's.reference')
-            ->select(
-                's.reference',
-                's.idno',
-                'p.firstname',
-                'p.lastname'
-            )
-            ->where('s.archive', 0)
-            ->groupBy(
-                's.reference',
-                's.idno',
-                'p.firstname',
-                'p.lastname'
-            )
-            ->get();
-
-        $weeklyShifts = DB::table('weekly_shifts as ws')
-            ->leftJoin('tbl_people_schedules as s', 's.id', '=', 'ws.schedual_id')
-            ->select(
-                'ws.day',
-                'ws.time_in',
-                'ws.time_out',
-                'ws.is_off',
-                's.reference'
-            )
-            ->where('ws.active', 1)
-            ->get();
-
-        return view(
-            'rota',
-            compact('employees', 'weeklyShifts')
-        );
-    }
-
     /**
-     * Monthly rota: a calendar-grid view for one month, built from the
-     * same recurring weekly_shifts pattern as the weekly rota - each day
-     * of the month is resolved to its weekday's standard shift, but only
-     * if that date actually falls inside the employee's schedule's
-     * datefrom/dateto range (so someone whose schedule starts mid-month
-     * shows blank before that, not a shift they don't actually have yet).
-     *
-     * @param Request $request  Optional ?month=YYYY-MM, defaults to current month
+     * GET /rota/pdf/{id}
+     * Printable single-employee weekly schedule, viewable inline (not
+     * force-downloaded). $id is a tbl_people_schedules row id, same as
+     * edit()/archive()/delete() above - works for active, upcoming, or
+     * archived schedules alike.
      */
-    public function monthlyRota(Request $request)
+    public function rotaPdf($id)
     {
-        if (permission::permitted('schedules')=='fail'){ return redirect()->route('denied'); }
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
 
-        [$monthStart, $monthEnd, $month] = $this->resolveMonth($request->query('month'));
+        $schedule = table::schedules()->where('id', $id)->first();
 
-        $days = $this->buildDayRange($monthStart, $monthEnd);
-        $employees = $this->monthlyRotaEmployees();
-        $weeklyShifts = $this->monthlyRotaWeeklyShifts();
-
-        return view('monthly-rota', compact('employees', 'weeklyShifts', 'days', 'month', 'monthStart'));
-    }
-
-    /**
-     * PDF export of the same monthly grid, landscape for width.
-     */
-    public function monthlyRotaPdf(Request $request)
-    {
-        if (permission::permitted('schedules')=='fail'){ return redirect()->route('denied'); }
-
-        [$monthStart, $monthEnd, $month] = $this->resolveMonth($request->query('month'));
-
-        $days = $this->buildDayRange($monthStart, $monthEnd);
-        $employees = $this->monthlyRotaEmployees();
-        $weeklyShifts = $this->monthlyRotaWeeklyShifts();
-
-        $pdf = Pdf::loadView('monthly-rota-pdf', compact('employees', 'weeklyShifts', 'days', 'month', 'monthStart'));
-        $pdf->setPaper('a4', 'landscape');
-
-        return $pdf->stream('monthly-rota-' . $month . '.pdf');
-    }
-
-    /**
-     * Parses a "YYYY-MM" query param into month boundaries, falling back
-     * to the current month for anything missing or malformed.
-     *
-     * @return array [Carbon $monthStart, Carbon $monthEnd, string $month]
-     */
-    private function resolveMonth(?string $month): array
-    {
-        try {
-            $monthStart = $month
-                ? Carbon::createFromFormat('Y-m', $month)->startOfMonth()
-                : now()->startOfMonth();
-        } catch (\Exception $e) {
-            $monthStart = now()->startOfMonth();
+        if (!$schedule) {
+            return redirect('staff-rota')->with('error', trans('Schedule not found.'));
         }
 
-        return [$monthStart, $monthStart->copy()->endOfMonth(), $monthStart->format('Y-m')];
+        $employee = table::people()->where('id', $schedule->reference)->first();
+        $companyData = table::companydata()->where('reference', $schedule->reference)->first();
+
+        $shifts = table::weeklyshifts()
+            ->where('schedual_id', $schedule->id)
+            ->get()
+            ->keyBy('day');
+
+        $days = self::DAYS;
+
+        $pdf = Pdf::loadView('admin.schedules.pdf', compact('employee', 'companyData', 'schedule', 'shifts', 'days'))
+            ->setPaper('a4', 'portrait');
+
+        $filename = mb_strtoupper($employee->firstname.'-'.$employee->lastname.'-weekly-schedule').'.pdf';
+
+        return $pdf->stream($filename);
     }
 
     /**
-     * @return \Illuminate\Support\Collection<Carbon>
+     * Sums scheduled hours across all non-off days from the submitted
+     * form. Shared by add() and update() so the cap is enforced identically.
      */
-    private function buildDayRange(Carbon $start, Carbon $end)
+    private function calculateScheduledHours(Request $request): float
     {
-        $days = collect();
-        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            $days->push($date->copy());
-        }
-        return $days;
-    }
+        $isOff = $request->input('is_off', []);
+        $timeIn = $request->input('time_in', []);
+        $timeOut = $request->input('time_out', []);
 
-    /**
-     * Active (non-archived) employees with a schedule, including the
-     * schedule's date range so the view can blank out days outside it.
-     */
-    private function monthlyRotaEmployees()
-    {
-        return DB::table('tbl_people_schedules as s')
-            ->leftJoin('tbl_people as p', 'p.id', '=', 's.reference')
-            ->select(
-                's.reference',
-                's.idno',
-                'p.firstname',
-                'p.lastname',
-                's.datefrom',
-                's.dateto'
-            )
-            ->where('s.archive', 0)
-            ->groupBy('s.reference', 's.idno', 'p.firstname', 'p.lastname', 's.datefrom', 's.dateto')
-            ->get();
-    }
+        $totalMinutes = 0;
 
-    /**
-     * The recurring weekday pattern (Monday..Sunday -> time_in/time_out/is_off)
-     * for every active, non-archived schedule - same source data the
-     * weekly rota uses, reused here to project across the whole month.
-     */
-    private function monthlyRotaWeeklyShifts()
-    {
-        return DB::table('weekly_shifts as ws')
-            ->leftJoin('tbl_people_schedules as s', 's.id', '=', 'ws.schedual_id')
-            ->select(
-                'ws.day',
-                'ws.time_in',
-                'ws.time_out',
-                'ws.is_off',
-                's.reference'
-            )
-            ->where('ws.active', 1)
-            ->where('s.archive', 0)
-            ->get();
-    }
+        foreach (self::DAYS as $day) {
+            if (in_array($day, $isOff)) {
+                continue;
+            }
 
-    /**
-     * Build/refresh the full 7-day weekly rota for one schedule: every
-     * day that isn't a rest day gets the schedule's standard open/close
-     * time, every rest day is marked is_off=1 with null times. Existing
-     * rows for this schedule are updated in place; missing ones are
-     * created - so this is safe to call every time a schedule is saved.
-     *
-     * @param int $scheduleId
-     * @param string $rawTimeIn   Raw submitted open time (any strtotime()-parseable format)
-     * @param string $rawTimeOut  Raw submitted close time
-     * @param array $restDays     Day names (e.g. ['Sunday','Saturday']) treated as off
-     */
-    private function generateWeeklyShiftsFromSchedule($scheduleId, $rawTimeIn, $rawTimeOut, array $restDays = [])
-    {
-        $restDays = array_map('trim', $restDays);
+            $in = $timeIn[$day] ?? null;
+            $out = $timeOut[$day] ?? null;
 
-        $timeIn = $this->toTimeOnly($rawTimeIn);
-        $timeOut = $this->toTimeOnly($rawTimeOut);
-
-        foreach (self::WEEK_DAYS as $day) {
-
-            $isOff = in_array($day, $restDays, true);
-
-            $existing = DB::table('weekly_shifts')
-                ->where('schedual_id', $scheduleId)
-                ->where('day', $day)
-                ->first();
-
-            $values = [
-                'time_in'  => $isOff ? null : $timeIn,
-                'time_out' => $isOff ? null : $timeOut,
-                'is_off'   => $isOff ? 1 : 0,
-                'active'   => 1,
-                'updated_at' => now(),
-            ];
-
-            if ($existing) {
-                DB::table('weekly_shifts')->where('id', $existing->id)->update($values);
-            } else {
-                $values['schedual_id'] = $scheduleId;
-                $values['day'] = $day;
-                $values['created_at'] = now();
-                DB::table('weekly_shifts')->insert($values);
+            if ($in && $out) {
+                $minutes = (strtotime($out) - strtotime($in)) / 60;
+                if ($minutes < 0) {
+                    $minutes += 24 * 60; // overnight shift
+                }
+                $totalMinutes += $minutes;
             }
         }
+
+        return round($totalMinutes / 60, 2);
     }
 
     /**
-     * Normalize any strtotime()-parseable time string into MySQL's
-     * TIME column format (H:i:s). Returns null for blank/unparseable
-     * input rather than storing "00:00:00" by accident.
+     * Writes the tbl_people_schedules summary row and its 7
+     * weekly_shifts detail rows. hours = the weekly hours ALLOWED
+     * figure the user entered (the contracted target), not a computed total.
      */
-    private function toTimeOnly($value)
+    private function saveSchedule(Request $request, $employee, $companyData, float $weeklyHoursAllowed, $existingSchedule = null)
     {
-        if (empty($value)) {
-            return null;
+        $isOff = $request->input('is_off', []);
+        $timeIn = $request->input('time_in', []);
+        $timeOut = $request->input('time_out', []);
+
+        $restDays = [];
+        $firstWorkingTimeIn = null;
+        $firstWorkingTimeOut = null;
+
+        foreach (self::DAYS as $day) {
+            if (in_array($day, $isOff)) {
+                $restDays[] = $day;
+                continue;
+            }
+
+            $in = $timeIn[$day] ?? null;
+            $out = $timeOut[$day] ?? null;
+
+            if ($in && $out && $firstWorkingTimeIn === null) {
+                $firstWorkingTimeIn = $in;
+                $firstWorkingTimeOut = $out;
+            }
         }
 
-        $timestamp = strtotime($value);
+        $employeeName = mb_strtoupper($employee->lastname.', '.$employee->firstname);
+        $idno = $companyData->idno ?? null;
 
-        return $timestamp !== false ? date('H:i:s', $timestamp) : null;
+        $scheduleAttributes = [
+            'reference' => $employee->id,
+            'idno'      => $idno,
+            'employee'  => $employeeName,
+            'intime'    => $firstWorkingTimeIn,
+            'outime'    => $firstWorkingTimeOut,
+            'datefrom'  => $request->datefrom,
+            'dateto'    => $request->dateto,
+            'hours'     => (string) $weeklyHoursAllowed,
+            'restday'   => implode(',', $restDays),
+            'archive'   => '0',
+        ];
+
+        if ($existingSchedule) {
+            table::schedules()->where('id', $existingSchedule->id)->update($scheduleAttributes);
+            $scheduleId = $existingSchedule->id;
+            table::weeklyshifts()->where('schedual_id', $scheduleId)->delete();
+        } else {
+            $scheduleId = table::schedules()->insertGetId($scheduleAttributes);
+        }
+
+        $shiftRows = [];
+        foreach (self::DAYS as $day) {
+            $dayOff = in_array($day, $isOff);
+            $in = !$dayOff ? ($timeIn[$day] ?? null) : null;
+            $out = !$dayOff ? ($timeOut[$day] ?? null) : null;
+
+            $shiftRows[] = [
+                'schedual_id' => $scheduleId,
+                'day'         => $day,
+                'time_in'     => $in ?: null,
+                'time_out'    => $out ?: null,
+                'is_off'      => $dayOff ? 1 : 0,
+                'active'      => 1,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ];
+        }
+
+        table::weeklyshifts()->insert($shiftRows);
     }
 }

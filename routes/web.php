@@ -165,28 +165,40 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
          Route::post('attendance/mark-range', [AttendanceController::class, 'markRange'])
     ->name('attendance.mark-range');
             /*
-            |--------------------------------------------------------------------------
-            | Employee Schedules
-            |--------------------------------------------------------------------------
-            */
-            Route::get('schedules', [SchedulesController::class, 'index'])->name('schedule');
-            Route::post('schedules/add', [SchedulesController::class, 'add']);
-            Route::get('schedules/edit/{id}', [SchedulesController::class, 'edit']);
-            Route::post('schedules/update', [SchedulesController::class, 'update']);
-            Route::get('schedules/delete/{id}', [SchedulesController::class, 'delete']);
-            Route::get('schedules/archive/{id}', [SchedulesController::class, 'archive']);
-            Route::post('schedules/weekly', [SchedulesController::class, 'storeWeekly']);
+           /*
+|--------------------------------------------------------------------------
+| Employee Schedules
+|--------------------------------------------------------------------------
+*/
+Route::get('schedules', [SchedulesController::class, 'index'])->name('schedule');
 
-            Route::get('/schedules/weekly/{id}', [SchedulesController::class, 'getWeekly']);
-            Route::get('/today-shifts', [SchedulesController::class, 'todayShifts'])->name('today.shifts');
+// NEW: entry point from the employee rota list - mirrors the
+// employees/new pattern (GET form -> POST add). Pre-fills the
+// weekly rota builder for one specific employee, the same way
+// "New Employee" pre-fills a blank form.
+Route::get('schedules/new/{employeeId}', [SchedulesController::class, 'create'])->name('schedule.new');
 
-            Route::get('/staff-rota', [SchedulesController::class, 'rota']);
-            Route::get('/rota/pdf', [SchedulesController::class, 'rotaPdf'])->name('rota.pdf');
+Route::post('schedules/add', [SchedulesController::class, 'add']);
+Route::get('schedules/edit/{id}', [SchedulesController::class, 'edit']);
+Route::post('schedules/update', [SchedulesController::class, 'update']);
+Route::get('schedules/delete/{id}', [SchedulesController::class, 'delete']);
+Route::get('schedules/archive/{id}', [SchedulesController::class, 'archive']);
+Route::post('schedules/weekly', [SchedulesController::class, 'storeWeekly']);
 
-            // Monthly Rota - calendar-grid view built from the same
-            // recurring weekly_shifts pattern as the weekly rota above.
-            Route::get('/monthly-rota', [SchedulesController::class, 'monthlyRota'])->name('monthly.rota');
-            Route::get('/monthly-rota/pdf', [SchedulesController::class, 'monthlyRotaPdf'])->name('monthly.rota.pdf');
+Route::get('/schedules/weekly/{id}', [SchedulesController::class, 'getWeekly']);
+Route::get('/today-shifts', [SchedulesController::class, 'todayShifts'])->name('today.shifts');
+
+Route::get('/staff-rota', [SchedulesController::class, 'index']);
+
+// FIX: this had no {id} placeholder at all, so there was no way to
+// generate a PDF for one specific employee's schedule. It now takes the
+// tbl_people_schedules row id, same as schedules/edit, /archive, /delete.
+Route::get('/rota/pdf/{id}', [SchedulesController::class, 'rotaPdf'])->name('rota.pdf');
+
+// Monthly Rota - calendar-grid view built from the same
+// recurring weekly_shifts pattern as the weekly rota above.
+Route::get('/monthly-rota', [SchedulesController::class, 'monthlyRota'])->name('monthly.rota');
+Route::get('/monthly-rota/pdf', [SchedulesController::class, 'monthlyRotaPdf'])->name('monthly.rota.pdf');
 
             /*
             |--------------------------------------------------------------------------
