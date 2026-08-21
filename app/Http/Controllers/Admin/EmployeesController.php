@@ -46,22 +46,39 @@ class EmployeesController extends Controller
 
 		$emp_file = $data->count();
 
-		if ($emp_allArchive != null OR $emp_allActive != null OR $emp_allArchive >= 1 OR $emp_allActive >= 1)
-		{
-			$number1 = $emp_allArchive / $emp_allActive * 100;
-		} else {
-			$number1 = null;
-		}
+		// Archive-to-active ratio, as a percentage. Guarded against
+		// division by zero: the previous condition here
+		// ($emp_allArchive != null OR $emp_allActive != null OR ...)
+		// was true almost every time (loose "!= null" on an int is true
+		// for anything but 0), so as soon as $emp_allActive was 0 with
+		// at least one archived employee this line threw a
+		// DivisionByZeroError on page load. It was also never actually
+		// passed to the view (missing from the compact() below), so it
+		// was dead code that could crash the page for nothing - now
+		// fixed AND included in case the view wants it.
+		$number1 = $emp_allActive > 0
+			? round(($emp_allArchive / $emp_allActive) * 100, 2)
+			: 0;
 
 	    return view('admin.employees', array_merge($counts, compact(
 	    	'data', 'emp_typeR', 'emp_typeT', 'emp_genderM', 'emp_genderR',
-	    	'emp_allActive', 'emp_file', 'emp_allArchive', 'companies', 'companyId'
+	    	'emp_allActive', 'emp_file', 'emp_allArchive', 'companies', 'companyId', 'number1'
 	    )));
 	}
 
 
 	public function api()
 	{
+		// This endpoint was previously unauthenticated relative to every
+		// other action in this controller - it dumped every employee's
+		// full people+company_data record (including national ID,
+		// share code, home address, etc.) to anyone who could hit the
+		// route. Bring it in line with the same permission gate index()
+		// uses.
+		if (permission::permitted('employees') == 'fail') {
+			return response()->json(['message' => 'Forbidden.'], 403);
+		}
+
 	    $data = DB::table('tbl_people')
 	        ->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
 	        ->get();
@@ -104,7 +121,16 @@ class EmployeesController extends Controller
 	private function getEmployeesForCompany($companyId)
 	{
 		$q = table::people()
-			->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference');
+			->join('tbl_company_data', 'tbl_people.id', '=', 'tbl_company_data.reference')
+			// Both tables have their own 'id' primary key. Without an
+			// explicit select, MySQL returns both 'id' columns and the
+			// LAST one wins when the row is hydrated - which was
+			// tbl_company_data.id, not the employee's real id. That's
+			// what sent Documents/Print PDF/QR (which use $employee->id)
+			// to the wrong employee. Selecting tbl_company_data.* first
+			// and tbl_people.* (id included) last guarantees
+			// $employee->id is always the real tbl_people.id.
+			->select('tbl_company_data.*', 'tbl_people.*');
 
 		if ($companyId) {
 			$companyRow = table::company()->where('id', $companyId)->first();
@@ -140,7 +166,11 @@ class EmployeesController extends Controller
 
 		$expiring = $data->filter(function ($e) {
 			if (!$e->visaend) return false;
-			$days = Carbon::parse($e->visaend)->diffInDays(now(), false);
+			// now()->diffInDays($future, false) - now() is before the
+			// expiry date, so this is positive, counting down to zero.
+			// (The reverse order - visaend->diffInDays(now()) - is always
+			// negative for a future date and made this card always read 0.)
+			$days = now()->diffInDays($e->visaend, false);
 			return $days > 0 && $days <= 90;
 		})->count();
 
@@ -190,6 +220,7 @@ class EmployeesController extends Controller
 	
     public function add(Request $request)
     {
+
 		if (permission::permitted('employees-add')=='fail'){ return redirect()->route('denied'); }
 		
 		$v = $request->validate([
@@ -200,14 +231,21 @@ class EmployeesController extends Controller
 			'employmentstatus' => 'required|alpha_dash_space|max:155',
 			'company_id' => 'required|integer',
 
+			// Same pattern as company_id: the Job Title field submits
+			// the master job-title's id, stored on the real
+			// tbl_company_data.jobtitle_id FK, matching how
+			// ProfileController resolves Job Duties for the profile
+			// view/PDF. Previously never validated or saved on Add.
+			'jobtitle_id' => 'nullable|integer|exists:tbl_form_jobtitle,id',
+
 			// Address history arrays - structural validation only.
-			// No continuity/coverage rule is enforced here anymore -
-			// whatever address rows are submitted are saved as-is.
+			// No continuity/coverage rule is enforced here - whatever
+			// address rows are submitted are saved as-is.
 			'address_line' => 'nullable|array',
 			'address_line.*' => 'nullable|string|max:500',
 			'address_from' => 'nullable|array',
 			'address_from.*' => 'nullable|date',
-			'address_to' => 'array',
+			'address_to' => 'nullable|array',
 			'address_to.*' => 'nullable|date',
 
 			// Supporting document per address entry.
@@ -219,18 +257,30 @@ class EmployeesController extends Controller
 			// Real image validation - checks actual file content via
 			// finfo, not just the extension, and caps size at 2MB.
 			'image' => 'nullable|image|mimes:jpeg,jpg,png|max:2048',
+
+			// Share code is optional. Its expiry is only required if a
+			// share code was actually entered - never the other way round.
+			'sharecodeexpiry' => 'nullable|required_with:sharecode|date',
 		]);
 
 		// The company dropdown posts the company's id. Resolve the
 		// readable name here since tbl_company_data.company still
 		// stores the name for reporting/exports.
 		if (!table::company()->where('id', $request->company_id)->exists()) {
-			return redirect('employee-new')->withInput()->with('error', trans('Selected company is invalid.'));
+			return redirect('employees-new')->withInput()->with('error', trans('Selected company is invalid.'));
 		}
 		
 		$companyRow = table::company()->where('id', $request->company_id)->first();
 		$company = mb_strtoupper($companyRow->company);
 		$companyId = $companyRow->id;
+
+		// Resolve the submitted job title id the same defensive way as
+		// company above - only trust it if it actually exists.
+		$jobtitleId = null;
+		if ($request->filled('jobtitle_id')) {
+			$jobtitleRow = table::jobtitle()->where('id', $request->jobtitle_id)->first();
+			$jobtitleId = $jobtitleRow ? $jobtitleRow->id : null;
+		}
 	  
 		$lastname = mb_strtoupper($request->lastname);
 		$firstname = mb_strtoupper($request->firstname);
@@ -244,14 +294,13 @@ class EmployeesController extends Controller
 		$mobileno = $request->mobileno;
 		$birthday = date("Y-m-d", strtotime($request->birthday));
 		$nationalid = mb_strtoupper($request->nationalid);
-		$sharecode = $request->sharecode;
-		if($request->sharecode !=null){
-			$sharecodeexpiry = date("Y-m-d", strtotime($request->sharecodeexpiry));
-		}
-		else{
-			return redirect('employees-new')->with('error', trans("Whoops! Share Code is required if Share Code Expiry Date is provided."));
-		}
-		$ni=$request->ni;
+		$sharecode = $request->sharecode ?: null;
+
+		// Share code is optional - only compute an expiry if a code was
+		// actually entered. Never block submission when it's blank.
+		$sharecodeexpiry = $sharecode ? $this->toNullableDate($request->sharecodeexpiry) : null;
+
+		$ni = $request->ni;
 		$birthplace = mb_strtoupper($request->birthplace);
 		$homeaddress = mb_strtoupper($request->homeaddress);
 		$department = mb_strtoupper($request->department);
@@ -263,7 +312,7 @@ class EmployeesController extends Controller
 		$employmenttype = $request->employmenttype;
 		$employmentstatus = $request->employmentstatus;
 		$startdate = date("Y-m-d", strtotime($request->startdate));
-		$dateregularized = date("Y-m-d", strtotime($request->dateregularized));
+		$dateregularized = $request->dateregularized ? date("Y-m-d", strtotime($request->dateregularized)) : null;
 
 		$is_idno_taken = table::companydata()->where('idno', $idno)->exists();
 
@@ -281,7 +330,7 @@ class EmployeesController extends Controller
 				$addressDocPaths[$i] = $this->storeAddressDocument($docFile);
 			}
 		} catch (\RuntimeException $e) {
-			return redirect('employee-new')->withInput()->with('error', trans($e->getMessage()));
+			return redirect('employees-new')->withInput()->with('error', trans($e->getMessage()));
 		}
 
 		// ---- Build address history rows ----
@@ -298,17 +347,18 @@ class EmployeesController extends Controller
 		try {
 			$avatarPath = $this->storeAvatarImage($request->file('image'));
 		} catch (\RuntimeException $e) {
-			return redirect('employee-new')->withInput()->with('error', trans($e->getMessage()));
+			return redirect('employees-new')->withInput()->with('error', trans($e->getMessage()));
 		}
 
 		
 		try {
 			DB::transaction(function () use (
 				$lastname, $firstname, $mi, $age, $gender, $emailaddress, $civilstatus,
-				$mobileno, $birthday, $birthplace, $nationalid, $sharecode, $sharecodeexpiry, $ni,
-				$homeaddress, $employmenttype, $employmentstatus, $avatarPath,
-				$company, $department, $jobposition, $companyemail, $leaveprivilege,
-				$idno, $startdate, $dateregularized, $addressEntries, $request, &$refId
+				$height, $weight, $mobileno, $birthday, $birthplace, $nationalid,
+				$sharecode, $sharecodeexpiry, $ni, $homeaddress, $employmenttype,
+				$employmentstatus, $avatarPath, $company, $department, $jobposition,
+				$companyemail, $leaveprivilege, $idno, $companyId, $jobtitleId, $startdate,
+				$dateregularized, $addressEntries, $request, &$refId
 			) {
 				table::people()->insert([
 					[
@@ -319,7 +369,8 @@ class EmployeesController extends Controller
 						'gender' => $gender,
 						'emailaddress' => $emailaddress,
 						'civilstatus' => $civilstatus,
-
+						'height' => $height,
+						'weight' => $weight,
 						'mobileno' => $mobileno,
 						'birthday' => $birthday,
 						'birthplace' => $birthplace,
@@ -327,8 +378,8 @@ class EmployeesController extends Controller
 						'sharecode' => $sharecode,
 						'sharecode_expires_at' => $sharecodeexpiry,
 						'NI' => $ni,
-						'idissuedate'=>$request->idissuedate,
-						'idexpirydate'=>$request->idexpirydate,
+						'idissuedate' => $this->toNullableDate($request->idissuedate),
+						'idexpirydate' => $this->toNullableDate($request->idexpirydate),
 						'homeaddress' => $homeaddress,
 						'employmenttype' => $employmenttype,
 						'employmentstatus' => $employmentstatus,
@@ -345,23 +396,27 @@ class EmployeesController extends Controller
 						'reference' => $refId,
 						'company' => $company,
 						'company_id' =>$companyId,
+						'jobtitle_id' => $jobtitleId,
 						'department' => $department,
 						'jobposition' => $jobposition,
 						'companyemail' => $companyemail,
 						'leaveprivilege' => $leaveprivilege,
+						'jobduties' => $request->jobduties,
 						'idno' => $idno,
-						'visaend'=>$request->visaend,
-						'visastart'=>$request->visastart,
+						'visaend'=> $this->toNullableDate($request->visaend),
+						'visastart'=> $this->toNullableDate($request->visastart),
 						'startdate' => $startdate,
 						'jobtype' => $request->jobtype,
 						'COSCertificateNo'=>$request->COSCertificateNo,
-						'cosexpiry'=>$request->cosexpiry,
+						'cosexpiry'=> $this->toNullableDate($request->cosexpiry),
 						'visastatus'=>$request->visastatus,
 						'kinno'=>$request->kinno,
 						'kinname'=>$request->kinname,
 						'workchecks'=>$request->workchecks,
 						'dateregularized' => $dateregularized,
-						'jobduties' => $request->jobduties
+						// NOTE: 'jobduties' previously appeared twice in
+						// this array (harmless but sloppy - the second
+						// assignment silently won). Removed the duplicate.
 					],
 				]);
 
@@ -395,7 +450,13 @@ class EmployeesController extends Controller
 					Storage::disk('public')->delete($path);
 				}
 			}
-			return redirect('employee-new')->withInput()->with('error', trans('Something went wrong while saving the employee. Please try again.'));
+
+			// Log the real reason instead of only showing a generic
+			// message, so failures like this are diagnosable from
+			// storage/logs next time.
+			\Log::error('Failed to add employee: '.$e->getMessage());
+
+			return redirect('employees-new')->withInput()->with('error', trans('Something went wrong while saving the employee. Please try again.'));
 		}
 
     	return redirect('employees')->with('success', trans("New employee has been added!"));
@@ -493,6 +554,25 @@ class EmployeesController extends Controller
 		}
 
 		return $entries;
+	}
+
+	/**
+	 * Convert a possibly-blank/invalid date string from the form into
+	 * either a clean Y-m-d string or null - never an empty string, which
+	 * MySQL rejects for DATE columns under strict mode.
+	 *
+	 * @param string|null $value
+	 * @return string|null
+	 */
+	private function toNullableDate($value)
+	{
+		if (empty($value)) {
+			return null;
+		}
+
+		$timestamp = strtotime($value);
+
+		return $timestamp !== false ? date('Y-m-d', $timestamp) : null;
 	}
 
 }

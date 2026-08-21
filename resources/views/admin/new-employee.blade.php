@@ -159,6 +159,13 @@
             background: #16a34a;
             transition: width 0.2s ease;
         }
+
+        .reason-field {
+            display: none;
+        }
+        .reason-field.visible {
+            display: block;
+        }
     </style>
 @endsection
 
@@ -194,86 +201,96 @@
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('First Name') }}</label>
-                                <input type="text" class="uppercase" name="firstname" value="">
+                                <input type="text" class="uppercase" name="firstname" value="{{ old('firstname') }}">
                             </div>
                             <div class="field">
                                 <label>{{ __('Middle Name') }}</label>
-                                <input type="text" class="uppercase" name="mi" value="">
+                                <input type="text" class="uppercase" name="mi" value="{{ old('mi') }}">
                             </div>
                         </div>
                         <div class="field">
                             <label>{{ __('Last Name') }}</label>
-                            <input type="text" class="uppercase" name="lastname" value="">
+                            <input type="text" class="uppercase" name="lastname" value="{{ old('lastname') }}">
                         </div>
                         <div class="field">
                             <label>{{ __('Gender') }}</label>
                             <select name="gender" class="ui dropdown uppercase">
                                 <option value="">Select Gender</option>
-                                <option value="MALE">MALE</option>
-                                <option value="FEMALE">FEMALE</option>
+                                <option value="MALE" @selected(old('gender') == 'MALE')>MALE</option>
+                                <option value="FEMALE" @selected(old('gender') == 'FEMALE')>FEMALE</option>
                             </select>
                         </div>
                         <div class="field">
                             <label>{{ __('Civil Status') }}</label>
                             <select name="civilstatus" class="ui dropdown uppercase">
                                 <option value="">Select Civil Status</option>
-                                <option value="SINGLE">SINGLE</option>
-                                <option value="MARRIED">MARRIED</option>
-                                <option value="ANULLED">ANULLED</option>
-                                <option value="WIDOWED">WIDOWED</option>
-                                <option value="LEGALLY SEPARATED">LEGALLY SEPARATED</option>
+                                <option value="SINGLE" @selected(old('civilstatus') == 'SINGLE')>SINGLE</option>
+                                <option value="MARRIED" @selected(old('civilstatus') == 'MARRIED')>MARRIED</option>
+                                <option value="ANULLED" @selected(old('civilstatus') == 'ANULLED')>ANULLED</option>
+                                <option value="WIDOWED" @selected(old('civilstatus') == 'WIDOWED')>WIDOWED</option>
+                                <option value="LEGALLY SEPARATED" @selected(old('civilstatus') == 'LEGALLY SEPARATED')>LEGALLY SEPARATED</option>
                             </select>
                         </div>
                       
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Email Address (Personal)') }}</label>
-                                <input type="email" name="emailaddress" value="" class="lowercase">
+                                <input type="email" name="emailaddress" value="{{ old('emailaddress') }}" class="lowercase">
                             </div>
                             <div class="field">
                                 <label>{{ __('Mobile Number') }}</label>
-                                <input type="text" class="" name="mobileno" value="">
+                                <input type="text" class="" name="mobileno" value="{{ old('mobileno') }}">
+                            </div>
+                        </div>
+                        <div class="two fields">
+                            <div class="field">
+                                <label>{{ __('Height') }}</label>
+                                <input type="text" name="height" value="{{ old('height') }}" placeholder="e.g. 175cm">
+                            </div>
+                            <div class="field">
+                                <label>{{ __('Weight') }}</label>
+                                <input type="text" name="weight" value="{{ old('weight') }}" placeholder="e.g. 70kg">
                             </div>
                         </div>
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Age') }}</label>
-                                <input type="text" name="age" value="" placeholder="00" readonly>
+                                <input type="text" name="age" value="{{ old('age') }}" placeholder="00" readonly>
                             </div>
                             <div class="field">
                                 <label>{{ __('Date of Birth') }}</label>
-                                <input type="text" name="birthday" value="" class="airdatepicker" data-position="top right" placeholder="Date"> 
+                                <input type="text" name="birthday" value="{{ old('birthday') }}" class="airdatepicker" data-position="top right" placeholder="Date"> 
                             </div>
                         </div>
                         <div class="field">
                             <label>{{ __('Passport No') }}</label>
-                            <input type="text" class="uppercase" name="nationalid" value="" placeholder="">
+                            <input type="text" class="uppercase" name="nationalid" value="{{ old('nationalid') }}" placeholder="">
                         </div>
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Passport Issue Date') }}</label>
-                                <input type="date" name="idissuedate" value="">
+                                <input type="date" name="idissuedate" value="{{ old('idissuedate') }}">
                             </div>
                             <div class="field">
                                 <label>{{ __('Passport Expiry Date') }}</label>
-                                <input type="date" name="idexpirydate" value="">
+                                <input type="date" name="idexpirydate" value="{{ old('idexpirydate') }}">
                             </div>
                         </div>
                         <div class="field">
                             <label>{{ __('Share Code') }}</label>
-                            <input type="text" class="uppercase" name="sharecode" value="" placeholder="">
+                            <input type="text" class="uppercase" name="sharecode" value="{{ old('sharecode') }}" placeholder="Leave blank if not applicable">
                         </div>
                         <div class="field">
                             <label>{{ __('Share Code Expiry Date') }}</label>
-                            <input type="date" name="sharecodeexpiry" value="">
+                            <input type="date" name="sharecodeexpiry" value="{{ old('sharecodeexpiry') }}">
                         </div>
                         <div class="field">
                             <label>{{ __('National Insurance') }}</label>
-                            <input type="text" class="uppercase" name="ni" value="" placeholder="">
+                            <input type="text" class="uppercase" name="ni" value="{{ old('ni') }}" placeholder="">
                         </div>
                         <div class="field">
                             <label>{{ __('Place of Birth') }}</label>
-                            <input type="text" class="uppercase" name="birthplace" value="" placeholder="City, Province, Country">
+                            <input type="text" class="uppercase" name="birthplace" value="{{ old('birthplace') }}" placeholder="City, Province, Country">
                         </div>
                         <div class="field">
                             <label>{{ __('Upload Profile Photo') }}</label>
@@ -288,7 +305,7 @@
                     <div class="box-header with-border">{{ __('Address History (Last 5 Years)') }}</div>
                     <div class="box-body">
                         <p id="address-history-intro">
-                            {{ __('Please provide a continuous address history covering the last 5 years, as required for right-to-work verification. Add each address you\'ve lived at, starting with your current one, with a supporting document reference and (where available) a scanned copy of that document. There should be no gaps between addresses.') }}
+                            {{ __('Please provide a continuous address history covering the last 5 years, as required for right-to-work verification. Add each address you\'ve lived at, starting with your current one, with a supporting document reference and (where available) a scanned copy of that document. There should be no gaps between addresses. Partial history can be saved now and completed later.') }}
                         </p>
 
                         <div id="address-coverage-status" class="status-incomplete">
@@ -345,6 +362,13 @@
                         </div>
                         <div class="field">
                             <label>{{ __('Job Title / Position') }}</label>
+                            {{-- NOTE: this dropdown's data-value is the job title's
+                                 TEXT (e.g. "CHEF"), not an id - it posts as
+                                 jobposition and is saved as free text on
+                                 tbl_company_data.jobposition. EmployeesController@add
+                                 separately resolves the real jobtitle_id FK server-side
+                                 by matching this text + the selected department against
+                                 tbl_form_jobtitle, for Job Duties lookups. --}}
                             <div class="ui search dropdown selection uppercase jobposition">
                                 <input type="hidden" name="jobposition">
                                 <i class="dropdown icon" tabindex="1"></i>
@@ -374,46 +398,46 @@
 
                         <div class="field">
                             <label>{{ __('COS Certificate Number') }}</label>
-                            <input type="text" class="uppercase" name="COSCertificateNo" value="" placeholder="e.g. C2G--------">
+                            <input type="text" class="uppercase" name="COSCertificateNo" value="{{ old('COSCertificateNo') }}" placeholder="e.g. C2G--------">
                         </div>
                         <div class="field">
                             <label>{{ __('COS Expiry') }}</label>
-                            <input type="date" name="cosexpiry" value="">
+                            <input type="date" name="cosexpiry" value="{{ old('cosexpiry') }}">
                         </div>
                         <div class="field">
                             <label>{{ __('Visa Status') }}</label>
-                            <input type="text" class="uppercase" name="visastatus" value="" placeholder="e.g. Work Visa">
+                            <input type="text" class="uppercase" name="visastatus" value="{{ old('visastatus') }}" placeholder="e.g. Work Visa">
                         </div>
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Visa Issue Date') }}</label>
-                                <input type="date" name="visastart" value="">
+                                <input type="date" name="visastart" value="{{ old('visastart') }}">
                             </div>
                             <div class="field">
                                 <label>{{ __('Visa Expiry Date') }}</label>
-                                <input type="date" name="visaend" value="">
+                                <input type="date" name="visaend" value="{{ old('visaend') }}">
                             </div>
                         </div>
                         <div class="field">
                             <label>{{ __('Job SOC Code') }}</label>
-                            <input type="text" class="uppercase" name="jobtype" value="" placeholder="e.g. Chef">
+                            <input type="text" class="uppercase" name="jobtype" value="{{ old('jobtype') }}" placeholder="e.g. Chef">
                         </div>
 
                         <!-- ID Number, auto-generated on page load but editable -->
                         <div class="field">
                             <label>{{ __('ID Number') }}</label>
-                            <input type="text" class="uppercase" name="idno" id="idno" value="">
+                            <input type="text" class="uppercase" name="idno" id="idno" value="{{ old('idno') }}">
                         </div>
 
                         <h4 class="ui dividing header">{{ __('Next of Kin') }}</h4>
 
                         <div class="field">
                             <label>{{ __('Next of Kin Number') }}</label>
-                            <input type="text" class="uppercase" name="kinno" value="" placeholder="e.g. Uncle's phone number">
+                            <input type="text" class="uppercase" name="kinno" value="{{ old('kinno') }}" placeholder="e.g. Uncle's phone number">
                         </div>
                         <div class="field">
                             <label>{{ __('Next of Kin Name and Relationship') }}</label>
-                            <input type="text" class="uppercase" name="kinname" value="" placeholder="e.g. Name (Uncle)">
+                            <input type="text" class="uppercase" name="kinname" value="{{ old('kinname') }}" placeholder="e.g. Name (Uncle)">
                         </div>
 
                         <div class="field">
@@ -425,7 +449,7 @@
 
                         <div class="field">
                             <label>{{ __('Email Address (Company)') }}</label>
-                            <input type="email" name="companyemail" value="" class="lowercase">
+                            <input type="email" name="companyemail" value="{{ old('companyemail') }}" class="lowercase">
                         </div>
                         <div class="field">
                             <label>{{ __('Leave Group') }}</label>
@@ -433,7 +457,7 @@
                                 <option value="">Select Leave Privilege</option>
                                 @isset($leavegroup) 
                                     @foreach($leavegroup as $lg)
-                                        <option value="{{ $lg->id }}">{{ $lg->leavegroup }}</option>
+                                        <option value="{{ $lg->id }}" @selected(old('leaveprivilege') == $lg->id)>{{ $lg->leavegroup }}</option>
                                     @endforeach
                                 @endisset
                             </select>
@@ -441,38 +465,50 @@
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Per Hour Pay') }}</label>
-                                <input type="number" name="perhourpay" value="" step="0.01" min="0" placeholder="0.00">
+                                <input type="number" name="perhourpay" value="{{ old('perhourpay') }}" step="0.01" min="0" placeholder="0.00">
                             </div>
                             <div class="field">
                                 <label>{{ __('Account Pay') }}</label>
-                                <input type="number" name="accountpay" value="" step="0.01" min="0" placeholder="0.00">
+                                <input type="number" name="accountpay" value="{{ old('accountpay') }}" step="0.01" min="0" placeholder="0.00">
                             </div>
                         </div>
                         <div class="field">
                             <label>{{ __('Employment Type') }}</label>
                             <select name="employmenttype" class="ui dropdown uppercase">
                                 <option value="">Select Type</option>
-                                <option value="Regular">Regular</option>
-                                <option value="Part-Time">Part-Time</option>
-                                <option value="Trainee">Trainee</option>
+                                <option value="Regular" @selected(old('employmenttype') == 'Regular')>Regular</option>
+                                <option value="Part-Time" @selected(old('employmenttype') == 'Part-Time')>Part-Time</option>
+                                <option value="Trainee" @selected(old('employmenttype') == 'Trainee')>Trainee</option>
                             </select>
                         </div>
                         <div class="field">
                             <label>{{ __('Employment Status') }}</label>
-                            <select name="employmentstatus" class="ui dropdown uppercase">
+                            {{-- Value is "Archived" (not "Archive") so this matches
+                                 every other place employmentstatus is set/read:
+                                 ProfileController::archive(), the Edit Employee form,
+                                 and EmployeesController::index()'s Archived summary
+                                 card. Previously this dropdown alone posted "Archive",
+                                 which meant a brand-new employee saved directly as
+                                 archived here would silently never be counted by that
+                                 card. --}}
+                            <select name="employmentstatus" id="employmentstatus-select" class="ui dropdown uppercase">
                                 <option value="">Select Status</option>
-                                <option value="Active">Active</option>
-                                <option value="Archived">Archived</option>
+                                <option value="Active" @selected(old('employmentstatus') == 'Active')>Active</option>
+                                <option value="Archived" @selected(old('employmentstatus') == 'Archived')>Archived</option>
                             </select>
+                        </div>
+                        <div class="field reason-field" id="reason-field">
+                            <label>{{ __('Reason') }}</label>
+                            <textarea name="reason" rows="2" class="uppercase" placeholder="Reason for archiving, if applicable">{{ old('reason') }}</textarea>
                         </div>
                         <div class="two fields">
                             <div class="field">
                                 <label>{{ __('Official Start Date') }}</label>
-                                <input type="text" name="startdate" value="" class="airdatepicker uppercase" data-position="top right" placeholder="Date">
+                                <input type="text" name="startdate" value="{{ old('startdate') }}" class="airdatepicker uppercase" data-position="top right" placeholder="Date">
                             </div>
                             <div class="field">
                                 <label>{{ __('Date Regularized') }}</label>
-                                <input type="text" name="dateregularized" value="" class="airdatepicker uppercase" data-position="top right" placeholder="Date">
+                                <input type="text" name="dateregularized" value="{{ old('dateregularized') }}" class="airdatepicker uppercase" data-position="top right" placeholder="Date">
                             </div>
                         </div>
                         <br>
@@ -655,6 +691,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     initAddressHistory();
+    initReasonField();
 });
 
 // Age Calculation
@@ -671,9 +708,35 @@ function calculateAge(birthDate) {
 }
 
 /* ================================================================
+   REASON FIELD
+   Only meaningful when the employee is being saved as Archived, so
+   it's kept hidden the rest of the time to avoid confusing anyone
+   filling in a brand-new, active employee.
+   ================================================================ */
+function initReasonField() {
+    var statusSelect = document.getElementById('employmentstatus-select');
+    var reasonField = document.getElementById('reason-field');
+
+    function syncReasonVisibility() {
+        var status = $(statusSelect).val();
+        reasonField.classList.toggle('visible', status === 'Archived');
+    }
+
+    $(statusSelect).dropdown('setting', 'onChange', syncReasonVisibility);
+    syncReasonVisibility();
+}
+
+/* ================================================================
    5-YEAR ADDRESS HISTORY
    NOTE: the address textarea below posts as address_line[] to match
    what EmployeesController@add reads ($request->input('address_line', [])).
+
+   IMPORTANT: coverage calculation below is advisory only. The backend
+   (EmployeesController::buildAddressEntries) does NOT require full
+   5-year continuity - it saves whatever non-blank rows are submitted.
+   The submit handler therefore WARNS on incomplete coverage but never
+   calls e.preventDefault(), so the form can always be saved and the
+   address history completed later.
    ================================================================ */
 let addressEntryCount = 0;
 
@@ -685,12 +748,12 @@ function initAddressHistory() {
     document.getElementById('add_employee_form').addEventListener('submit', function (e) {
         const coverage = calculateAddressCoverage();
         if (!coverage.complete) {
-            e.preventDefault();
+            // Non-blocking: the backend accepts partial address history,
+            // so the form must not be prevented from submitting here.
             $.notify({
-                icon: 'ui icon times',
-                message: "Please complete a continuous 5-year address history before saving."
-            }, { type: 'danger', timer: 500 });
-            document.getElementById('address-entries').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                icon: 'ui icon warning',
+                message: "Note: address history doesn't cover a full continuous 5 years yet. Saving anyway — you can complete it later."
+            }, { type: 'warning', timer: 800 });
         }
     });
 }
@@ -818,7 +881,7 @@ function calculateAddressCoverage() {
 
     setCoverageStatus(complete ? 'complete' : 'incomplete', complete ? 'Full 5-year address history captured.' : label, percent);
 
-    if (submitBtn) submitBtn.disabled = false; // never hard-lock the button; server re-validates too
+    if (submitBtn) submitBtn.disabled = false; // never hard-lock the button; server accepts partial history too
 
     return { complete: complete };
 }

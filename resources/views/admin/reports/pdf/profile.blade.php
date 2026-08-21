@@ -96,11 +96,20 @@
     <table class="header-row">
         <tr>
             <td style="width: 90px;">
-                @if(!empty($i))
-                    <img class="avatar" src="{{ asset('storage/' . $i) }}">
-                @else
-                    <img class="avatar" src="{{ public_path('assets/images/faces/default_user.jpg') }}">
-                @endif
+         @php
+    $imagePath = $i
+        ? Storage::disk('public')->path($i)
+        : public_path('assets/images/faces/default_user.jpg');
+
+    $base64 = base64_encode(file_get_contents($imagePath));
+    $mimeType = mime_content_type($imagePath);
+@endphp
+
+<img
+    class="avatar border-white img-fluid"
+    src="data:{{ $mimeType }};base64,{{ $base64 }}"
+    alt="profile photo"
+/>
             </td>
             <td>
                 <h1>{{ $p->firstname ?? '' }} {{ $p->mi ?? '' }} {{ $p->lastname ?? '' }}</h1>
@@ -214,7 +223,7 @@
         </tr>
         <tr>
             <td class="label">Job Duties</td>
-            <td>{!! strip_tags($rawjobtitle->jobduties ?? '', '<br><b><i><ul><ol><li>') !!}</td>
+                                        <td class="uppercase">@isset($c->jobduties) {!! $c->jobduties !!} @endisset</td>
         </tr>
         <tr>
             <td class="label">Leave Privilege</td>

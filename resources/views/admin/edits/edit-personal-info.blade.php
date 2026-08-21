@@ -173,16 +173,70 @@
         .hide {
             display: none !important;
         }
+
+        .reason-field {
+            display: none;
+        }
+        .reason-field.visible {
+            display: block;
+        }
+
+        /* Existing supporting document preview on an address entry */
+        .existing-doc {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #374151;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 10px;
+        }
+        .existing-doc img.doc-thumb {
+            width: 34px;
+            height: 34px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+        .existing-doc .doc-icon {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            flex-shrink: 0;
+            color: #6b7280;
+        }
+        .existing-doc a {
+            color: #16a34a;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .existing-doc a:hover {
+            text-decoration: underline;
+        }
+        .existing-doc .doc-hint {
+            color: #6b7280;
+            font-weight: 400;
+        }
     </style>
 @endsection
 
 @section('content')
 
 @php
-    // Match the employee's currently-saved company name (text) back to
-    // its id, since the AJAX cascade below - same as the New Employee
-    // form - is keyed on company id, not name.
-    $selectedCompany = $company->firstWhere('company', $company_details->company);
+    // Prefer matching on the real FK (tbl_company_data.company_id) since
+    // that's authoritative. Fall back to matching by name only for
+    // legacy rows that predate the company_id column being populated.
+    $selectedCompany = $company->firstWhere('id', $company_details->company_id)
+        ?? $company->firstWhere('company', $company_details->company);
 @endphp
 
 <div class="container-fluid">
@@ -262,6 +316,16 @@
                     </div>
                     <div class="two fields">
                         <div class="field">
+                            <label>{{ __('Height') }}</label>
+                            <input type="text" name="height" value="{{ old('height', $person_details->height) }}">
+                        </div>
+                        <div class="field">
+                            <label>{{ __('Weight') }}</label>
+                            <input type="text" name="weight" value="{{ old('weight', $person_details->weight) }}">
+                        </div>
+                    </div>
+                    <div class="two fields">
+                        <div class="field">
                             <label>{{ __('Age') }}</label>
                             <input type="text" name="age" value="{{ old('age', $person_details->age) }}" readonly>
                         </div>
@@ -286,11 +350,14 @@
                     </div>
                     <div class="field">
                         <label>{{ __('Share Code') }}</label>
-                        <input type="text" class="uppercase" name="sharecode" value="{{ old('sharecode', $person_details->sharecode) }}">
+                        <input type="text" class="uppercase" name="sharecode" value="{{ old('sharecode', $person_details->sharecode) }}" placeholder="Leave blank if not applicable">
                     </div>
                     <div class="field">
                         <label>{{ __('Share Code Expiry Date') }}</label>
-                        <input type="date" name="sharecodeexpiry" value="{{ old('sharecodeexpiry', \Carbon\Carbon::parse($person_details->sharecode_expires_at)->format('Y-m-d')) }}">
+                        {{-- Guarded: Carbon::parse(null) resolves to "now", which was
+                             silently showing today's date for employees with no share
+                             code on file. Only format it if a value actually exists. --}}
+                        <input type="date" name="sharecodeexpiry" value="{{ old('sharecodeexpiry', $person_details->sharecode_expires_at ? \Carbon\Carbon::parse($person_details->sharecode_expires_at)->format('Y-m-d') : null) }}">
                     </div>
                     <div class="field">
                         <label>{{ __('National Insurance') }}</label>
@@ -320,7 +387,7 @@
                 <div class="box-header with-border">{{ __('Address History (Last 5 Years)') }}</div>
                 <div class="box-body">
                     <p id="address-history-intro">
-                        {{ __('Add each address this employee has lived at, starting with their current one, with a supporting document reference and (where available) a scanned copy of that document.') }}
+                        {{ __('Add each address this employee has lived at, starting with their current one, with a supporting document reference and (where available) a scanned copy of that document. Partial history can be saved and completed later.') }}
                     </p>
 
                     <div id="address-coverage-status" class="status-incomplete">
@@ -348,7 +415,7 @@
                     <div class="field">
                         <label>{{ __('Company') }}</label>
                         {{-- Hidden input posts the company's id (tbl_form_company.id),
-                             matching FieldsController@departmentsByCompany, and
+                             matching EmployeesController@departmentsByCompany, and
                              pre-selected to the employee's current company. --}}
                         <div class="ui search dropdown selection uppercase company-dropdown">
                             <input type="hidden" name="company_id" value="{{ old('company_id', optional($selectedCompany)->id) }}">
@@ -378,6 +445,14 @@
 
                     <div class="field">
                         <label>{{ __('Job Title / Position') }}</label>
+                        {{-- NOTE: this dropdown's data-value is the job title's TEXT
+                             (e.g. "CHEF"), not an id - it posts as jobposition and is
+                             saved as free text on tbl_company_data.jobposition.
+                             ProfileController@updatePerson separately resolves the
+                             real jobtitle_id FK server-side by matching this text +
+                             the selected department against tbl_form_jobtitle, for
+                             Job Duties lookups (falling back to whatever jobtitle_id
+                             is already on file if nothing matches). --}}
                         <div class="ui search dropdown selection uppercase jobposition">
                             <input type="hidden" name="jobposition" value="{{ old('jobposition', $company_details->jobposition) }}">
                             <i class="dropdown icon" tabindex="1"></i>
@@ -487,11 +562,19 @@
                     </div>
                     <div class="field">
                         <label>{{ __('Employment Status') }}</label>
-                        <select name="employmentstatus" class="ui dropdown uppercase">
+                        {{-- "Archived" matches ProfileController::archive(),
+                             EmployeesController::index()'s Archived summary card, and
+                             the New Employee form - all four now agree on this exact
+                             value. --}}
+                        <select name="employmentstatus" id="employmentstatus-select" class="ui dropdown uppercase">
                             <option value="">Select Status</option>
                             <option value="Active" {{ old('employmentstatus', $person_details->employmentstatus) == 'Active' ? 'selected' : '' }}>Active</option>
                             <option value="Archived" {{ old('employmentstatus', $person_details->employmentstatus) == 'Archived' ? 'selected' : '' }}>Archived</option>
                         </select>
+                    </div>
+                    <div class="field reason-field" id="reason-field">
+                        <label>{{ __('Reason') }}</label>
+                        <textarea name="reason" rows="2" class="uppercase" placeholder="Reason for archiving, if applicable">{{ old('reason', $company_details->reason) }}</textarea>
                     </div>
                     <div class="two fields">
                         <div class="field">
@@ -724,6 +807,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     initAddressHistory();
+    initReasonField();
 });
 
 function calculateAge(birthDate) {
@@ -737,10 +821,70 @@ function calculateAge(birthDate) {
 }
 
 /* ================================================================
+   REASON FIELD
+   Only meaningful when the employee is Archived, so it stays hidden
+   otherwise. Starts visible if the employee already is Archived
+   (e.g. loading this form to update the reason later).
+   ================================================================ */
+function initReasonField() {
+    var statusSelect = document.getElementById('employmentstatus-select');
+    var reasonField = document.getElementById('reason-field');
+
+    function syncReasonVisibility() {
+        var status = $(statusSelect).val();
+        reasonField.classList.toggle('visible', status === 'Archived');
+    }
+
+    $(statusSelect).dropdown('setting', 'onChange', syncReasonVisibility);
+    syncReasonVisibility();
+}
+
+/* ================================================================
    5-YEAR ADDRESS HISTORY
+   NOTE: coverage calculation below is advisory only. The backend
+   (ProfileController::syncAddressHistory) does NOT require full
+   5-year continuity - it saves whatever non-blank rows are submitted,
+   updates/inserts/deletes to match. The submit handler therefore WARNS
+   on incomplete coverage but never blocks submission.
+
+   existingAddressHistory rows now also carry doc_url (built server-side
+   in ProfileController::withDocumentUrl() via Storage::disk('public')
+   ->url()) so an already-uploaded supporting document/image can
+   actually be viewed here, instead of the form looking like nothing
+   was ever uploaded for that address.
    ================================================================ */
 const existingAddressHistory = @json($addressHistory ?? []);
 let addressEntryCount = 0;
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+function fileExtension(path) {
+    if (!path) return '';
+    const clean = path.split('?')[0];
+    const dot = clean.lastIndexOf('.');
+    return dot === -1 ? '' : clean.substring(dot + 1).toLowerCase();
+}
+
+function renderExistingDocMarkup(docUrl) {
+    if (!docUrl) {
+        return '';
+    }
+
+    const isImage = IMAGE_EXTENSIONS.includes(fileExtension(docUrl));
+    const thumb = isImage
+        ? `<img src="${docUrl}" class="doc-thumb" alt="Uploaded document">`
+        : `<span class="doc-icon"><i class="ui file alternate outline icon"></i></span>`;
+
+    return `
+        <div class="existing-doc">
+            ${thumb}
+            <div>
+                <a href="${docUrl}" target="_blank" rel="noopener">View current document</a>
+                <div class="doc-hint">Upload a new file below to replace it</div>
+            </div>
+        </div>
+    `;
+}
 
 function updateAddressLabels() {
     document.querySelectorAll('.address-entry').forEach(function (row) {
@@ -757,7 +901,8 @@ function initAddressHistory() {
                 address: row.address_line,
                 from: row.date_from,
                 to: row.date_to,
-                docReference: row.doc_reference
+                docReference: row.doc_reference,
+                docUrl: row.doc_url
             });
         });
     } else {
@@ -770,12 +915,12 @@ function initAddressHistory() {
     document.getElementById('edit_employee_form').addEventListener('submit', function (e) {
         const coverage = calculateAddressCoverage();
         if (!coverage.complete) {
-            e.preventDefault();
+            // Non-blocking: the backend accepts partial address history,
+            // so the form must not be prevented from submitting here.
             $.notify({
-                icon: 'ui icon times',
-                message: "Please complete a continuous 5-year address history before saving."
-            }, { type: 'danger', timer: 500 });
-            document.getElementById('address-entries').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                icon: 'ui icon warning',
+                message: "Note: address history doesn't cover a full continuous 5 years yet. Saving anyway — you can complete it later."
+            }, { type: 'warning', timer: 800 });
         }
     });
 }
@@ -817,6 +962,7 @@ function addAddressEntry(isCurrent, prefill) {
             </div>
             <div class="field">
                 <label>Upload Supporting Document</label>
+                ${renderExistingDocMarkup(prefill.docUrl)}
                 <input type="file" name="address_doc[]" class="address-doc-input" accept="image/png, image/jpeg, image/jpg, application/pdf">
             </div>
         </div>

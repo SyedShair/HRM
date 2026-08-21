@@ -12,7 +12,7 @@
         @endphp
 @section('meta')
     <title>Edit Job Title | {{ $appName }}</title>
-    <meta name="description" content="Edit a job title, its duties, company, and department.">
+    <meta name="description" content="Edit a job title, its company, and department.">
 @endsection
 
 @section('content')
@@ -89,16 +89,6 @@
                                        value="{{ old('jobtitle', $data->jobtitle) }}">
                             </div>
 
-                            {{-- JOB DUTIES --}}
-                            <div class="field">
-                                <label for="jobduties">
-                                    {{ __("Job Duties") }}
-                                    <span class="help">e.g. "Making food"</span>
-                                </label>
-
-                                <textarea id="jobduties" class="uppercase" name="jobduties">{{ old('jobduties', $data->jobduties) }}</textarea>
-                            </div>
-
                             <div class="actions">
                                 <a href="{{ url('fields/jobtitle') }}" class="ui button small">{{ __("Cancel") }}</a>
 
@@ -127,11 +117,6 @@
 
 
 @section('scripts')
-<script src="https://cdn.ckeditor.com/4.21.0/standard/ckeditor.js"></script>
-<script>
-    CKEDITOR.replace('jobduties');
-</script>
-
 <script type="text/javascript">
 $(document).ready(function () {
 

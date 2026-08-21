@@ -179,28 +179,6 @@
 
 
                         {{-- =========================
-                             JOB DUTIES
-                        ========================== --}}
-                        <div class="field">
-
-                            <label>
-                                {{ __("Job Duties") }}
-
-                                <span class="help">
-                                    e.g. "Making food"
-                                </span>
-                            </label>
-
-                            <textarea
-                                class="uppercase"
-                                name="jobduties"
-                                id="jobduties"
-                            >{{ old('jobduties') }}</textarea>
-
-                        </div>
-
-
-                        {{-- =========================
                              ERROR MESSAGE
                         ========================== --}}
                         <div class="field">
@@ -302,10 +280,6 @@
                                 </th>
 
                                 <th>
-                                    {{ __("Job Duties") }}
-                                </th>
-
-                                <th>
                                     {{ __("Company") }}
                                 </th>
 
@@ -329,7 +303,6 @@
                                     <tr>
 
                                         <td>{{ $j->jobtitle ?? '' }}</td>
-                                        <td>{!! $j->jobduties ?? '' !!}</td>
                                         <td>{{ $j->company_name ?? '' }}</td>
                                         <td>{{ $j->department_name ?? '' }}</td>
 
@@ -345,8 +318,10 @@
 
                                             <a
                                                 href="{{ url('fields/jobtitle/delete/'.$j->id) }}"
-                                                class="ui circular basic icon button tiny"
-                                                onclick="return confirm('{{ __('Delete this job title?') }}');"
+                                                class="ui circular basic icon button tiny js-delete-trigger"
+                                                data-name="{{ $j->jobtitle }}"
+                                                data-type="{{ __('job title') }}"
+                                                onclick="return false;"
                                             >
                                                 <i class="icon trash alternate outline"></i>
                                             </a>
@@ -373,15 +348,35 @@
 
 </div>
 
+<!-- ================= DELETE CONFIRMATION MODAL ================= -->
+<div class="ui basic modal" id="deleteConfirmModal">
+    <div class="ui icon header" style="border:none;">
+        <i class="trash alternate outline icon" style="color:#d93025;"></i>
+        {{ __('Delete Record') }}
+    </div>
+    <div class="content" style="text-align:center; color:#e5e7eb;">
+        <p style="font-size:15px; margin:0;">
+            {{ __('Are you sure you want to delete') }}
+            <strong id="deleteConfirmName" style="color:#fff;"></strong>?
+        </p>
+        <p style="font-size:12px; color:#9ca3af; margin-top:8px;">
+            {{ __('This action cannot be undone.') }}
+        </p>
+    </div>
+    <div class="actions" style="text-align:center; border:none; padding-bottom:20px;">
+        <div class="ui red basic inverted cancel button">
+            <i class="times icon"></i> {{ __('Cancel') }}
+        </div>
+        <a href="#" id="deleteConfirmButton" class="ui red inverted ok button">
+            <i class="checkmark icon"></i> {{ __('Yes, Delete') }}
+        </a>
+    </div>
+</div>
+
 @endsection
 
 
 @section('scripts')
-
-<script src="https://cdn.ckeditor.com/4.21.0/standard/ckeditor.js"></script>
-<script>
-    CKEDITOR.replace('jobduties');
-</script>
 
 <script type="text/javascript">
 
@@ -494,14 +489,15 @@ $(document).ready(function () {
             : '';
         var departmentName = $('#jtDepartmentFilter').val();
 
-        // Job Title, Job Duties, Company, Department, Actions
-        // -> Company is column index 2, Department is column index 3.
+        // Job Title, Company, Department, Actions
+        // -> Company is column index 1, Department is column index 2
+        // (shifted down by one now that the Job Duties column is gone).
         var companyRegex = companyName ? '^' + $.fn.dataTable.util.escapeRegex(companyName) + '$' : '';
         var departmentRegex = departmentName ? '^' + $.fn.dataTable.util.escapeRegex(departmentName) + '$' : '';
 
         jobtitleTable
-            .column(2).search(companyRegex, true, false)
-            .column(3).search(departmentRegex, true, false)
+            .column(1).search(companyRegex, true, false)
+            .column(2).search(departmentRegex, true, false)
             .draw();
     }
 
@@ -518,6 +514,28 @@ $(document).ready(function () {
     // is populated for that company and defaults to "All" (no department
     // filter applied), then the table filter is applied.
     loadDepartmentFilterOptions($('#jtCompanyFilter').val(), applyJobtitleFilters);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Delete confirmation modal (replaces native confirm())
+    |--------------------------------------------------------------------------
+    */
+
+    // Delegated on document so it keeps working for rows that live
+    // inside the DataTable's redrawn/paginated DOM.
+    $(document).on('click', '.js-delete-trigger', function (e) {
+        e.preventDefault();
+
+        var href = $(this).attr('href');
+        var name = $(this).data('name');
+        var type = $(this).data('type') || 'record';
+
+        $('#deleteConfirmName').text(name || ('this ' + type));
+        $('#deleteConfirmButton').attr('href', href);
+
+        $('#deleteConfirmModal').modal('show');
+    });
 
 
     /*
@@ -674,8 +692,7 @@ $(document).ready(function () {
             console.log('Submitting:', {
                 company_id: $('#company_id').val(),
                 department: $('#department').val(),
-                jobtitle: $('#jobtitle').val(),
-                jobduties: $('#jobduties').val()
+                jobtitle: $('#jobtitle').val()
             });
 
             if (!companyId) {
