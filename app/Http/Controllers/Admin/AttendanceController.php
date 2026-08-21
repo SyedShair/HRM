@@ -181,7 +181,7 @@ class AttendanceController extends Controller
 
     public function addEntry(Request $request)
     {
-
+dd($request->all());
             
         if (permission::permitted('attendance')=='fail'){ return redirect()->route('denied'); }
         if ($request->ref == NULL) {

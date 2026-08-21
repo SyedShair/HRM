@@ -41,6 +41,12 @@ public static function addresshistory()
     	return $schedules;
   	}
 
+	public static function weeklyshifts() 
+	{
+    	$weeklyshifts = DB::table('weekly_shifts');
+    	return $weeklyshifts;
+  	}
+
 	public static function reportviews() 
 	{
     	$reportviews = DB::table('tbl_report_views');
