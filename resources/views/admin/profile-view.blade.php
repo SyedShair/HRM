@@ -74,11 +74,20 @@ if (!empty($p->idexpirydate)) {
                 <div class="box box-success">
                     <div class="box-body employee-info">
                         <div class="author">
-                        @if($i != null)
-                            <img class="avatar border-white img-fluid" src="{{ asset('storage/' . $i) }}" alt="profile photo"/>
-                        @else
-                            <img class="avatar border-white img-fluid" src="{{ asset('assets/images/faces/default_user.jpg') }}" alt="profile photo"/>
-                        @endif
+                       @php
+    $imagePath = $i
+        ? Storage::disk('public')->path($i)
+        : public_path('assets/images/faces/default_user.jpg');
+
+    $base64 = base64_encode(file_get_contents($imagePath));
+    $mimeType = mime_content_type($imagePath);
+@endphp
+
+<img
+    class="avatar border-white img-fluid"
+    src="data:{{ $mimeType }};base64,{{ $base64 }}"
+    alt="profile photo"
+/>
                         </div>
                         <p class="description text-center">
                             <h4 class="title">@isset($p->firstname) {{ $p->firstname }} @endisset @isset($p->lastname) {{ $p->lastname }} @endisset</h4>
@@ -185,10 +194,7 @@ if (!empty($p->idexpirydate)) {
                                         <td><p>{{ __('Place of Birth') }}</p></td>
                                         <td><p>@isset($p->birthplace) {{ $p->birthplace }} @endisset</p></td>
                                     </tr>
-                                    <tr>
-                                        <td><p>{{ __('Home Address') }}</p></td>
-                                        <td><p>@isset($p->homeaddress) {{ $p->homeaddress }} @endisset</p></td>
-                                    </tr>
+                                   
                                     <tr>
                                         <td><p>{{ __('Passport No') }}</p></td>
                                         <td>
@@ -226,7 +232,7 @@ if (!empty($p->idexpirydate)) {
                                     </tr>
                                        <tr>
                                         <td>{{ __('Job Duties') }}</td>
-                                        <td class="uppercase">@isset($jobtitleRow->jobduties) {!! $jobtitleRow->jobduties !!} @endisset</td>
+                                        <td class="uppercase">@isset($c->jobduties) {!! $c->jobduties !!} @endisset</td>
 
                                     </tr>
                                     <tr>

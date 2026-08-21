@@ -394,16 +394,13 @@ class FieldsController extends Controller
       }
 
       $jobtitle = mb_strtoupper(trim($request->jobtitle));
-      // Job Duties now comes from CKEditor as HTML - don't run it through
-      // mb_strtoupper(), which would mangle the markup (e.g. <p> -> <P>).
-      $jobduties = $request->jobduties;
 
       table::jobtitle()->insert([
         [
           'jobtitle' => $jobtitle,
           'dept_code' => $department->id,
           'company_id' => $request->company_id,
-          'jobduties' => $jobduties,
+          
         ],
       ]);
 
@@ -445,7 +442,6 @@ class FieldsController extends Controller
             'company_id' => 'required|integer|exists:tbl_form_company,id',
             'dept_code' => 'required|integer|exists:tbl_form_department,id',
             'jobtitle' => 'required|string|max:100',
-            'jobduties' => 'nullable|string|max:500',
         ]);
 
         $department = table::department()
@@ -460,8 +456,6 @@ class FieldsController extends Controller
         }
 
         $jobtitle = mb_strtoupper(trim($request->jobtitle));
-        // Job Duties comes from CKEditor as HTML - preserve it as-is.
-        $jobduties = $request->jobduties;
 
         // Keep company_id in sync with dept_code - previously this could
         // drift out of sync if only dept_code was updated while company_id
@@ -470,7 +464,6 @@ class FieldsController extends Controller
             'jobtitle' => $jobtitle,
             'dept_code' => $department->id,
             'company_id' => $department->company_id,
-            'jobduties' => $jobduties,
         ]);
 
         return redirect('fields/jobtitle')->with('success', trans("Job title has been updated!"));

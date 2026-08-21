@@ -21,21 +21,34 @@ class ProfileController extends Controller
   public function view($id, Request $request)
 {
     if (permission::permitted('employees-view')=='fail'){ return redirect()->route('denied'); }
-    
+
     $p = table::people()->where('id', $id)->first();
+
+    // Fail gracefully instead of letting the blade dereference a null
+    // $p a few lines down and 500.
+    if (!$p) {
+        return redirect('employees')->with('error', trans('That employee record could not be found.'));
+    }
+
     $c = table::companydata()->where('reference', $id)->first();
-    $i = table::people()->select('avatar')->where('id', $id)->value('avatar');
+    $i = $p->avatar;
     $leavetype = table::leavetypes()->get();
     $leavegroup = table::leavegroup()->get();
 
-    // Job Duties now comes from tbl_form_jobtitle (the master record
-    // for that position) via the real jobtitle_id FK on
-    // tbl_company_data, rather than a free-text match.
-    $jobtitleRow = $c->jobtitle_id
-        ? table::jobtitle()->where('id', $c->jobtitle_id)->first()
-        : null;
+    // Job Duties comes from tbl_form_jobtitle (the master record for
+    // that position) via the real jobtitle_id FK on tbl_company_data,
+    // rather than a free-text match.
+    $rawjobtitle = ($c && $c->jobtitle_id) ? table::jobtitle()->where('id', $c->jobtitle_id)->first() : null;
 
-    return view('admin.profile-view', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'jobtitleRow'));
+    // Full 5-year address history for this employee, each row carrying
+    // a ready-to-use doc_url so the profile page can actually display
+    // (or link to) any supporting document/image that was uploaded
+    // against it. Previously this page never queried
+    // tbl_address_history at all, so uploaded address documents were
+    // invisible here even though they were being saved correctly.
+    $addressHistory = $this->addressHistoryQuery($id)->get()->map(fn ($row) => $this->withDocumentUrl($row));
+
+    return view('admin.profile-view', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'rawjobtitle', 'addressHistory'));
 }
    	public function delete($id, Request $request)
     {
@@ -49,11 +62,26 @@ class ProfileController extends Controller
 		if (permission::permitted('employees-delete')=='fail'){ return redirect()->route('denied'); }
 		
 		$id = $request->id;
+
+		// Clean up any files this employee owns on disk before wiping
+		// the DB rows, otherwise the avatar and every address-history
+		// document become permanently orphaned storage.
+		$avatar = table::people()->where('id', $id)->value('avatar');
+		if ($avatar) {
+			Storage::disk('public')->delete($avatar);
+		}
+		table::addresshistory()->where('reference', $id)->get()->each(function ($row) {
+			if ($row->doc_file) {
+				Storage::disk('public')->delete($row->doc_file);
+			}
+		});
+
 		table::people()->where('id', $id)->delete();
 		table::companydata()->where('reference', $id)->delete();
 		table::attendance()->where('reference', $id)->delete();
 		table::schedules()->where('reference', $id)->delete();
 		table::leaves()->where('reference', $id)->delete();
+		table::addresshistory()->where('reference', $id)->delete();
 		table::users()->where('reference', $id)->delete();
 
 		return redirect('employees')->with('success', trans("Employee information has been deleted!"));
@@ -63,19 +91,73 @@ class ProfileController extends Controller
     {
 		if (permission::permitted('employees-archive')=='fail'){ return redirect()->route('denied'); }
 
-		$id = $request->id;
-		table::people()->where('id', $id)->update(['employmentstatus' => 'Archived']);
-		table::users()->where('reference', $id)->update(['status' => '0']);
+		// The route already binds $id - it was previously being thrown
+		// away and silently replaced with $request->id, which meant the
+		// route parameter was dead code and archiving relied entirely on
+		// a same-named hidden form field being present.
+		$request->validate([
+    'reason' => 'nullable|string|max:455',
+]);
 
-    	return redirect('employees')->with('success', trans("Employee information has been archived!"));
+$person = table::people()->where('id', $id)->first();
+
+if (!$person) {
+    return redirect('employees')->with('error', 'Employee not found.');
+}
+
+if ($person->employmentstatus === 'Archived') {
+
+    table::people()->where('id', $id)->update([
+        'employmentstatus' => 'Active',
+    ]);
+
+    table::users()->where('reference', $id)->update([
+        'status' => '1',
+    ]);
+
+    $message = 'Employee has been made Active!';
+
+} else {
+
+    table::people()->where('id', $id)->update([
+        'employmentstatus' => 'Archived',
+    ]);
+
+    table::users()->where('reference', $id)->update([
+        'status' => '0',
+    ]);
+
+    if ($request->filled('reason')) {
+        table::companydata()->where('reference', $id)->update([
+            'reason' => mb_strtoupper(trim($request->reason)),
+        ]);
+    }
+
+    $message = 'Employee information has been archived!';
+}
+
+return redirect('employees')->with('success', $message);
    	}
 
 	public function editPerson($id)
     {
 		if (permission::permitted('employees-edit')=='fail'){ return redirect()->route('denied'); }
 
-		$company_details = table::companydata()->where('id', $id)->first();
+		// NOTE: match on the FK 'reference' column (the employee's id),
+		// NOT tbl_company_data's own 'id' - same as view() above and
+		// updatePerson() below. Matching on 'id' here was returning null
+		// for any employee whose company_data row id != employee id,
+		// which then crashed the blade the moment it touched
+		// $company_details->company_id.
+		$company_details = table::companydata()->where('reference', $id)->first();
 		$person_details = table::people()->where('id', $id)->first();
+
+		// If either core record is missing, fail gracefully instead of
+		// letting the blade dereference a null property and 500.
+		if (!$person_details || !$company_details) {
+			return redirect('employees')->with('error', trans('That employee record could not be found.'));
+		}
+
 		$company = table::company()->get();
 		$department = table::department()->get();
 		$jobtitle = table::jobtitle()->get();
@@ -85,9 +167,10 @@ class ProfileController extends Controller
 		// Existing 5-year address history rows for this employee, oldest
 		// first - the edit form pre-fills these instead of seeding a
 		// single blank "current address" row like the New Employee form.
-		$addressHistory = table::addresshistory()
-			->where('reference', $person_details->id)
-			->orderBy('date_from')
+		// Each row also carries doc_url so the edit form can show a
+		// thumbnail/link of whatever document is already on file,
+		// instead of looking like nothing was ever uploaded.
+		$addressHistory = $this->addressHistoryQuery($person_details->id)
 			->get()
 			->map(function ($row) {
 				// <input type="date"> only accepts an exact "YYYY-MM-DD"
@@ -97,7 +180,7 @@ class ProfileController extends Controller
 				// browser, which is what was showing the wrong dates.
 				$row->date_from = $row->date_from ? Carbon::parse($row->date_from)->format('Y-m-d') : null;
 				$row->date_to = $row->date_to ? Carbon::parse($row->date_to)->format('Y-m-d') : null;
-				return $row;
+				return $this->withDocumentUrl($row);
 			});
 
         return view('admin.edits.edit-personal-info', compact('company_details', 'person_details', 'company', 'department', 'jobtitle', 'leavegroup', 'e_id', 'addressHistory'));
@@ -121,6 +204,18 @@ class ProfileController extends Controller
 			// is a text column, not a foreign key.
 			'company_id' => 'nullable|integer|exists:tbl_form_company,id',
 
+			// Same pattern as company_id: the Job Title field submits
+			// the master job-title's id, stored on the real
+			// tbl_company_data.jobtitle_id FK. This was previously
+			// collected on-screen (the dropdown is loaded in
+			// editPerson()) but never actually saved on submit.
+			'jobtitle_id' => 'nullable|integer|exists:tbl_form_jobtitle,id',
+
+			// Optional free-text reason accompanying a status change
+			// (e.g. resignation/termination), stored in
+			// tbl_company_data.reason.
+			'reason' => 'nullable|string|max:455',
+
 			// Real image validation - checks actual file content via
 			// finfo, not just the extension, and caps size at 2MB. Was
 			// previously missing entirely on this form, unlike Add.
@@ -137,6 +232,10 @@ class ProfileController extends Controller
 			'doc_reference.*' => 'nullable|string|max:255',
 			'address_doc' => 'nullable|array',
 			'address_doc.*' => 'nullable|file|mimes:jpeg,jpg,png,pdf|max:4096',
+
+			// Share code is optional. Its expiry is only required if a
+			// share code was actually entered - never the other way round.
+			'sharecodeexpiry' => 'nullable|required_with:sharecode|date',
 		]);
 
 		$id = Crypt::decryptString($request->id);
@@ -157,24 +256,44 @@ class ProfileController extends Controller
 
 		// Resolve the submitted company_id back to the company's name,
 		// since tbl_company_data.company stores text, matching how
-		// EmployeesController::add() saves it. Previously this read
-		// $request->company, which the form never actually submits -
-		// every edit was silently blanking the employee's company.
-		$company = null;
+		// EmployeesController::add() saves it. If company_id wasn't
+		// submitted for any reason, fall back to the employee's
+		// currently-saved company/company_id instead of blanking it out.
+		$existingCompanyData = table::companydata()->where('reference', $id)->first();
+
+		$company = $existingCompanyData->company ?? null;
+		$companyId = $existingCompanyData->company_id ?? null;
+
 		if ($request->filled('company_id')) {
 			$companyRow = table::company()->where('id', $request->company_id)->first();
-			$company = $companyRow ? mb_strtoupper($companyRow->company) : null;
-			$companyId = $companyRow ? $companyRow->id : null;
+			if ($companyRow) {
+				$company = mb_strtoupper($companyRow->company);
+				$companyId = $companyRow->id;
+			}
 		}
 
-		if($request->sharecode != null){
-			$sharecodeexpiry = date("Y-m-d", strtotime($request->sharecodeexpiry));
+		// Same fallback pattern as company above: keep the existing
+		// jobtitle_id unless a new one was actually submitted, so a form
+		// post that omits the field never silently blanks it out.
+		$jobtitleId = $existingCompanyData->jobtitle_id ?? null;
+		if ($request->filled('jobtitle_id')) {
+			$jobtitleRow = table::jobtitle()->where('id', $request->jobtitle_id)->first();
+			if ($jobtitleRow) {
+				$jobtitleId = $jobtitleRow->id;
+			}
 		}
-		else{
-			return redirect('profile/edit/'.$id)->withInput()->with('error', trans("Whoops! Share Code is required if Share Code Expiry Date is provided."));			
-			};
-		
-		
+
+		// Reason: only overwrite what's stored if one was actually
+		// submitted on this request; never blank out a previously
+		// recorded reason just because the field was left empty here.
+		$reason = $request->filled('reason')
+			? mb_strtoupper(trim($request->reason))
+			: ($existingCompanyData->reason ?? null);
+
+		// Share code is optional - only require/compute an expiry if a
+		// code was actually entered. Never block the update when blank.
+		$sharecode = $request->sharecode ?: null;
+		$sharecodeexpiry = $sharecode ? $this->toNullableDate($request->sharecodeexpiry) : null;
 
 		$department = mb_strtoupper($request->department);
 		$jobposition = mb_strtoupper($request->jobposition);
@@ -187,10 +306,6 @@ class ProfileController extends Controller
 		$existingAvatar = table::people()->where('id', $id)->value('avatar');
 
 		// ---- Avatar: same professional handling as EmployeesController::add() ----
-		// Previously this used getClientOriginalName() + a raw move() to
-		// public_path()/assets/faces - client-controlled filename, no
-		// real image validation, and inconsistent with where Add stores
-		// avatars (storage/app/public/avatars via the Storage disk).
 		try {
 			$newAvatarPath = $this->storeAvatarImage($request->file('image'));
 		} catch (\RuntimeException $e) {
@@ -216,9 +331,9 @@ class ProfileController extends Controller
 			DB::transaction(function () use (
 				$id, $lastname, $firstname, $mi, $age, $gender, $emailaddress, $civilstatus,
 				$height, $weight, $mobileno, $birthday, $nationalid, $birthplace, $homeaddress,
-				$avatarToSave, $company, $department, $jobposition,$sharecodeexpiry, $companyemail, $leaveprivilege,
-				$idno, $employmenttype, $employmentstatus,
-				$request, $addressDocPaths,
+				$avatarToSave, $company, $companyId, $jobtitleId, $reason, $department, $jobposition, $sharecode,
+				$sharecodeexpiry, $companyemail, $leaveprivilege, $idno, $employmenttype,
+				$employmentstatus, $request, $addressDocPaths
 			) {
 				table::people()->where('id', $id)->update([
 					'lastname' => $lastname,
@@ -240,16 +355,17 @@ class ProfileController extends Controller
 					'avatar' => $avatarToSave,
 					'perhourpay' => $request->perhourpay,
 					'accountpay'  =>  $request->accountpay,
-					'sharecode' => $request->sharecode,
+					'sharecode' => $sharecode,
 					'sharecode_expires_at' => $sharecodeexpiry,
 					'NI' => $request->ni,
-					'idissuedate' => $request->idissuedate,
-					'idexpirydate' => $request->idexpirydate,
+					'idissuedate' => $this->toNullableDate($request->idissuedate),
+					'idexpirydate' => $this->toNullableDate($request->idexpirydate),
 				]);
 
 				table::companydata()->where('reference', $id)->update([
 					'company' => $company,
-					'company_id' =>$companyId,
+					'company_id' => $companyId,
+					'jobtitle_id' => $jobtitleId,
 					'department' => $department,
 					'jobposition' => $jobposition,
 					'companyemail' => $companyemail,
@@ -257,16 +373,17 @@ class ProfileController extends Controller
 					'idno' => $idno,
 					'jobtype' => $request->jobtype,
 					'COSCertificateNo' => $request->COSCertificateNo,
-					'cosexpiry' => $request->cosexpiry,
-					'visaend' => $request->visaend,
-					'visastart' => $request->visastart,
+					'cosexpiry' => $this->toNullableDate($request->cosexpiry),
+					'visaend' => $this->toNullableDate($request->visaend),
+					'visastart' => $this->toNullableDate($request->visastart),
 					'visastatus' => $request->visastatus,
 					'kinno' => $request->kinno,
 					'kinname' => $request->kinname,
 					'workchecks' => $request->workchecks,
 					'jobduties' => $request->jobduties,
-					'startdate' => $request->startdate ? date("Y-m-d", strtotime($request->startdate)) : null,
-					'dateregularized' => $request->dateregularized ? date("Y-m-d", strtotime($request->dateregularized)) : null,
+					'startdate' => $this->toNullableDate($request->startdate),
+					'dateregularized' => $this->toNullableDate($request->dateregularized),
+					'reason' => $reason,
 				]);
 
 				$this->syncAddressHistory($id, $request, $addressDocPaths);
@@ -281,6 +398,12 @@ class ProfileController extends Controller
 					Storage::disk('public')->delete($path);
 				}
 			}
+
+			// Log the real reason instead of only showing a generic
+			// message, so failures like this are diagnosable from
+			// storage/logs next time.
+			\Log::error('Failed to update employee #'.$id.': '.$e->getMessage());
+
 			return redirect('profile/edit/'.$id)->withInput()->with('error', trans('Something went wrong while updating this employee. Please try again.'));
 		}
 
@@ -389,6 +512,62 @@ class ProfileController extends Controller
 	}
 
 	/**
+	 * Base query for one employee's address history, oldest first.
+	 * Centralised so view(), editPerson(), and printProfile() can't
+	 * drift out of sync with each other on ordering/scope.
+	 *
+	 * @param int $employeeId
+	 * @return \Illuminate\Database\Query\Builder
+	 */
+	private function addressHistoryQuery($employeeId)
+	{
+		return table::addresshistory()
+			->where('reference', $employeeId)
+			->orderBy('date_from');
+	}
+
+	/**
+	 * Annotate an address-history row with a browsable URL for its
+	 * uploaded supporting document/image (doc_file), using the same
+	 * "public" disk everything is stored on. Requires
+	 * `php artisan storage:link` to have been run once, exactly like
+	 * avatars already require.
+	 *
+	 * @param object $row
+	 * @return object
+	 */
+	private function withDocumentUrl($row)
+	{
+		$row->doc_url = $row->doc_file ? Storage::disk('public')->url($row->doc_file) : null;
+		return $row;
+	}
+
+	/**
+	 * Stream a single address-history supporting document/image inline
+	 * in the browser, so it can be opened directly (e.g. from a "View"
+	 * link/thumbnail on the profile or edit page) without exposing the
+	 * raw storage path or relying on the public disk being web-readable
+	 * in every deployment.
+	 *
+	 * @param int $addressId
+	 * @param Request $request
+	 */
+	public function viewAddressDocument($addressId, Request $request)
+	{
+		if (permission::permitted('employees-view') == 'fail') {
+			return redirect()->route('denied');
+		}
+
+		$row = table::addresshistory()->where('id', $addressId)->first();
+
+		if (!$row || !$row->doc_file || !Storage::disk('public')->exists($row->doc_file)) {
+			abort(404, 'Document not found.');
+		}
+
+		return Storage::disk('public')->response($row->doc_file);
+	}
+
+	/**
 	 * Store an uploaded avatar image professionally - identical approach
 	 * to EmployeesController::storeAvatarImage(): confirms it's genuinely
 	 * an image, generates a collision-proof UUID filename (never trusts
@@ -430,6 +609,25 @@ class ProfileController extends Controller
 		$filename = Str::uuid()->toString() . '.' . $extension;
 
 		return $file->storeAs('address-documents', $filename, 'public');
+	}
+
+	/**
+	 * Convert a possibly-blank/invalid date string from the form into
+	 * either a clean Y-m-d string or null - never an empty string, which
+	 * MySQL rejects for DATE columns under strict mode.
+	 *
+	 * @param string|null $value
+	 * @return string|null
+	 */
+	private function toNullableDate($value)
+	{
+		if (empty($value)) {
+			return null;
+		}
+
+		$timestamp = strtotime($value);
+
+		return $timestamp !== false ? date('Y-m-d', $timestamp) : null;
 	}
 
 	public function viewProfile(Request $request) 
@@ -530,11 +728,8 @@ public function printProfile($id)
     $i = $p->avatar;
     $leavetype = table::leavetypes()->get();
     $leavegroup = table::leavegroup()->get();
-    $addressHistory = table::addresshistory()
-        ->where('reference', $id)
-        ->orderBy('date_from')
-        ->get();
-$rawjobtitle = $c->jobtitle_id ? table::jobtitle()->where('id', $c->jobtitle_id)->first() : null;
+    $addressHistory = $this->addressHistoryQuery($id)->get()->map(fn ($row) => $this->withDocumentUrl($row));
+    $rawjobtitle = ($c && $c->jobtitle_id) ? table::jobtitle()->where('id', $c->jobtitle_id)->first() : null;
 
     $pdf = Pdf::loadView('admin.reports.pdf.profile', compact('p', 'c', 'i', 'leavetype', 'leavegroup', 'addressHistory', 'rawjobtitle'))
         ->setPaper('a4', 'portrait');

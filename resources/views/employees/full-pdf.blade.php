@@ -181,33 +181,29 @@
 </style>
 </head>
 <body>
-    <div class="brand-panel">
-@php
-    $logoPath = \App\Classes\table::settings()->value('app_logo');
-    $company = \App\Classes\table::settings()->value('app_name');
-@endphp
-
-@php
-    $appSettings = \App\Classes\table::settings()
-        ->where('id', 1)
-        ->first();
-
-    $appName = !empty($appSettings?->app_name)
-        ? $appSettings->app_name
-        : 'Company';
-
-    if (!empty($appSettings?->app_logo)) {
-        $appLogo = str_starts_with($appSettings->app_logo, 'http')
-            ? $appSettings->app_logo
-            : asset('storage/' . ltrim($appSettings->app_logo, '/'));
+           @php
+    if (!empty($employee->avatar) && Storage::disk('public')->exists($employee->avatar)) {
+        $imagePath = Storage::disk('public')->path($employee->avatar);
     } else {
-        $appLogo = asset('/assets/images/img/logo.png');
+        $imagePath = public_path('assets/images/faces/default_user.jpg');
     }
+
+    $mimeType = mime_content_type($imagePath);
+    $base64 = base64_encode(file_get_contents($imagePath));
+
+
+      // Branding: pulled from the Settings page (App name / logo).
+    $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+    $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Comapny';
+    $appLogo = !empty($appSettings->app_logo)
+        ? asset('storage/'.$appSettings->app_logo)
+        : asset('/assets/images/img/logo.png');
 @endphp
 
 <div class="watermark">
-    <img src="{{ $appLogo }}" alt="{{ $appName }}">
+    <img src="{{$appLogo}}">
 </div>
+
 <div class="container">
 
     <!-- HEADER -->
@@ -215,23 +211,18 @@
 
         <div class="header-left">
 
-            @if($employee->avatar != null)
-                <img class="avatar"
-                     src="{{ asset('storage/'.$employee->avatar) }}"
-                     alt="profile photo"/>
-            @else
-                <img class="avatar"
-                     src="{{ asset('/assets/images/faces/default_user.jpg') }}"
-                     alt="profile photo"/>
-            @endif
+    
 
-           
-
+<img
+    class="avatar"
+    src="data:{{ $mimeType }};base64,{{ $base64 }}"
+    alt="profile photo"
+/>
         </div>
-
+       
         <div class="header-center">
             <div class="report-title">Employee Profile</div>
-            <div class="business-name">{{ $company }}</div>
+            <div class="business-name">{{$appName}}</div>
         </div>
 
         <div class="header-right">
@@ -295,8 +286,22 @@
                 <tr>
                     <th>Job Duties</th>
                     <td>
-                        @if(!empty($rawjobtitle?->jobduties))
-                            {!! strip_tags($rawjobtitle->jobduties, '<br><b><i><ul><ol><li>') !!}
+                        @if(!empty($company->jobduties))
+                            @php
+                                $duties = is_string($company->jobduties)
+                                    ? json_decode($company->jobduties, true)
+                                    : $company->jobduties;
+                            @endphp
+
+                            @if(is_array($duties))
+                                <ul style="margin:0; padding-left:18px;">
+                                    @foreach($duties as $duty)
+                                        <li>{{ $duty }}</li>
+                                    @endforeach
+                                </ul>
+                            @else
+                                {!! $company->jobduties !!}
+                            @endif
                         @else
                             N/A
                         @endif
