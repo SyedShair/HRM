@@ -174,8 +174,20 @@
 
                             $label = $timeIn . ' - ' . $timeOut;
 
-                            $totalHours +=
-                                (strtotime($shift->time_out) - strtotime($shift->time_in)) / 3600;
+                            // Hours for this shift, in seconds. An overnight
+                            // shift (e.g. 22:00 - 06:00) has a LOWER
+                            // time_out than time_in on the same reference
+                            // day, so the raw subtraction below comes out
+                            // negative unless a full day is added back -
+                            // previously this silently SUBTRACTED hours
+                            // from the weekly total for every night-shift
+                            // worker instead of adding them.
+                            $shiftSeconds = strtotime($shift->time_out) - strtotime($shift->time_in);
+                            if ($shiftSeconds < 0) {
+                                $shiftSeconds += 24 * 3600;
+                            }
+
+                            $totalHours += $shiftSeconds / 3600;
                         }
 
                     }

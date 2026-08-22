@@ -321,7 +321,7 @@
                         <tr>
                             <td data-label="{{ __('Employee') }}">
                                 <div class="employee-cell">
-                                    <img class="rota-avatar" src="{{ $emp->avatar ? asset('storage/'.$emp->avatar) : asset('/assets/images/default.png') }}" alt="">
+                                    <img class="rota-avatar" src="{{ $emp->avatar ? asset('storage/'.$emp->avatar) : asset('/assets/images/faces/default.png') }}" alt="">
                                     <div>
                                         <div class="rota-name">{{ $emp->lastname }}, {{ $emp->firstname }}</div>
                                         <div class="rota-position">{{ $emp->jobposition }}</div>

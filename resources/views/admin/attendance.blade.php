@@ -39,7 +39,17 @@
                 <div class="box-body reportstable">
                     <form action="{{ url('export/report/attendance') }}" method="post" accept-charset="utf-8" class="ui small form form-filter" id="filterform">
                         {{ csrf_field() }}
-                        <div class="inline three fields">
+                        <div class="inline four fields">
+                            <div class="three wide field">
+                                <select id="companyfilter" name="company_id" class="ui dropdown">
+                                    @forelse($companies as $c)
+                                        <option value="{{ $c->id }}" @selected($companyId == $c->id)>{{ $c->company }}</option>
+                                    @empty
+                                        <option value="">{{ __('No companies found') }}</option>
+                                    @endforelse
+                                </select>
+                            </div>
+
                             <div class="two wide field">
                                 <input id="datefrom" type="text" name="datefrom" value="" placeholder="Start Date" class="airdatepicker">
                                 <i class="ui icon calendar alternate outline calendar-icon"></i>
@@ -193,129 +203,146 @@
     $('.jtimepicker').mdtimepicker({format:'h:mm tt', theme: 'blue', hourPadding: true});
     $('.airdatepicker').datepicker({ language: 'en', dateFormat: 'yyyy-mm-dd' });
     $('.ui.dropdown.getref').dropdown();
+    $('#companyfilter').dropdown();
 
 $('select[name="name"]').on('change', function () {
     var r = $(this).find('option:selected').attr('data-ref') || '';
     $('input[name="ref"]').val(r);
 });
 
+function runAttendanceFilter() {
+    var date_from = $('#datefrom').val();
+    var date_to = $('#dateto').val();
+    var company_id = $('#companyfilter').val();
+    var url = $("#_url").val();
 
-    $('#btnfilter').click(function(event) {
-        event.preventDefault();
-        var date_from = $('#datefrom').val();
-        var date_to = $('#dateto').val();
-        var url = $("#_url").val();
+    $.ajax({
+        url: url + '/attendance/filter/',
+        type: 'get',
+        dataType: 'json',
+        data: { datefrom: date_from, dateto: date_to, company_id: company_id },
+        headers: { 'X-CSRF-Token': $('meta[name="csrf-token"]').attr('content') },
+        success: function(response) {
+            showdata(response);
 
-        $.ajax({
-            url: url + '/attendance/filter/', type: 'get', dataType: 'json', data: {datefrom: date_from, dateto: date_to}, headers: { 'X-CSRF-Token': $('meta[name="csrf-token"]').attr('content') },
-            success: function(response) {
-                showdata(response);
+            function showdata(jsonresponse) {
+                var employee = jsonresponse;
+                var tbody = $('#dataTables-example tbody');
 
-                function showdata(jsonresponse) {
-                    var employee = jsonresponse;
-                    var tbody = $('#dataTables-example tbody');
-                    
-                    // clear data and destroy datatable
-                    $('#dataTables-example').DataTable().destroy();
-                    tbody.children('tr').remove();
+                // clear data and destroy datatable
+                $('#dataTables-example').DataTable().destroy();
+                tbody.children('tr').remove();
 
-                    // append table row data
-                    for (var i = 0; i < employee.length; i++) {
-                        var time_in = employee[i].timein;
-                        var time_out = employee[i].timeout;
-                        var in_status = employee[i].status_timein;
-                        var out_status = employee[i].status_timeout;
-                        var t_in = moment(time_in, "YYYY-MM-DD hh:mm:ss A");
-                        var t_out = moment(time_out, "YYYY-MM-DD hh:mm:ss A");
-                        var format = {{ $tf }};
-                        var cc = "{{ $cc }}";
+                // append table row data
+                for (var i = 0; i < employee.length; i++) {
+                    var time_in = employee[i].timein;
+                    var time_out = employee[i].timeout;
+                    var in_status = employee[i].status_timein;
+                    var out_status = employee[i].status_timeout;
+                    var t_in = moment(time_in, "YYYY-MM-DD hh:mm:ss A");
+                    var t_out = moment(time_out, "YYYY-MM-DD hh:mm:ss A");
+                    var format = {{ $tf }};
+                    var cc = "{{ $cc }}";
 
-                        function tf(f) {
-                            if(f == 1) {
-                                return "hh:mm:ss A";
-                            } else {
-                                return "kk:mm:ss";
+                    function tf(f) {
+                        if(f == 1) {
+                            return "hh:mm:ss A";
+                        } else {
+                            return "kk:mm:ss";
+                        }
+                    }
+
+                    function time(p) {
+                        if(p == 1) {
+                            if(isNaN(t_in) !== true) {
+                                return t_in.format(tf(format));
+                            } 
+                        } else {
+                            if(isNaN(t_out) !== true) {
+                                return t_out.format(tf(format));
                             }
                         }
 
-                        function time(p) {
-                            if(p == 1) {
-                                if(isNaN(t_in) !== true) {
-                                    return t_in.format(tf(format));
-                                } 
-                            } else {
-                                if(isNaN(t_out) !== true) {
-                                    return t_out.format(tf(format));
-                                }
-                            }
+                        return "";
+                    }
 
-                            return "";
-                        }
-
-                        function th(tt) {
-                            if(tt !== null && tt.indexOf('.') !== -1) {
-                                var t = tt.split(".");
-                                return t[0]+" hr "+t[1]+" mins";
-                            }
-                            
-                            if(tt !== null && tt.indexOf('.') == 0) {
-                                return tt+" hr";
-                            }
-
-                            return "";
-                        }
-
-                        function t_in_status(in_status) {
-                            if(in_status == 'Late In') {
-                                return 'orange';
-                            } else {
-                                return 'blue';
-                            }
+                    function th(tt) {
+                        if(tt !== null && tt.indexOf('.') !== -1) {
+                            var t = tt.split(".");
+                            return t[0]+" hr "+t[1]+" mins";
                         }
                         
-                        function t_out_status(out_status) {
-                            if(out_status == 'Early Out') {
-                                return 'red';
-                            } else {
-                                return 'green';
-                            }
+                        if(tt !== null && tt.indexOf('.') == 0) {
+                            return tt+" hr";
                         }
 
-                        function d_status(in_status, out_status) {
-                            if(in_status != '' && out_status != '') {
-                                return "<span class=' " + t_in_status(in_status) + "'>" +employee[i].status_timein+ "</span>" + ' / ' + "<span class='" + t_out_status(out_status) + "'>" +employee[i].status_timeout+ "</span>";
-                            } else if (in_status != '' && out_status == '') {
-                                return "<span class=' " + t_in_status(in_status) + "'>" +employee[i].status_timein+ "</span>";
-                            } else {
-                                return "";
-                            }
+                        return "";
+                    }
+
+                    function t_in_status(in_status) {
+                        if(in_status == 'Late In') {
+                            return 'orange';
+                        } else {
+                            return 'blue';
+                        }
+                    }
+                    
+                    function t_out_status(out_status) {
+                        if(out_status == 'Early Out') {
+                            return 'red';
+                        } else {
+                            return 'green';
+                        }
+                    }
+
+                    function d_status(in_status, out_status) {
+                        if(in_status != '' && out_status != '') {
+                            return "<span class=' " + t_in_status(in_status) + "'>" +employee[i].status_timein+ "</span>" + ' / ' + "<span class='" + t_out_status(out_status) + "'>" +employee[i].status_timeout+ "</span>";
+                        } else if (in_status != '' && out_status == '') {
+                            return "<span class=' " + t_in_status(in_status) + "'>" +employee[i].status_timein+ "</span>";
+                        } else {
+                            return "";
+                        }
+                    }
+
+                    function locationButtons(row) {
+                        var html = "";
+                        var empLabel = (row.employee || "").replace(/'/g, "&#39;");
+
+                        if (row.latitude_in && row.longitude_in) {
+                            html += "<button type='button' class='ui blue tiny circular icon button' title='View Clock In Location' " +
+                                    "onclick=\"showLocationMap(" + row.latitude_in + ", " + row.longitude_in + ", 'Clock In — " + empLabel + " (" + row.date + ")')\">" +
+                                    "<i class='map marker alternate icon'></i></button>";
                         }
 
-                        function locationButtons(row) {
-                            var html = "";
-                            var empLabel = (row.employee || "").replace(/'/g, "&#39;");
-
-                            if (row.latitude_in && row.longitude_in) {
-                                html += "<button type='button' class='ui blue tiny circular icon button' title='View Clock In Location' " +
-                                        "onclick=\"showLocationMap(" + row.latitude_in + ", " + row.longitude_in + ", 'Clock In — " + empLabel + " (" + row.date + ")')\">" +
-                                        "<i class='map marker alternate icon'></i></button>";
-                            }
-
-                            if (row.latitude_out && row.longitude_out) {
-                                html += "<button type='button' class='ui teal tiny circular icon button' title='View Clock Out Location' " +
-                                        "onclick=\"showLocationMap(" + row.latitude_out + ", " + row.longitude_out + ", 'Clock Out — " + empLabel + " (" + row.date + ")')\">" +
-                                        "<i class='map marker alternate icon'></i></button>";
-                            }
-
-                            if (!row.latitude_in && !row.latitude_out) {
-                                html = "<span style='color:#9ca3af; font-size:12px;'>—</span>";
-                            }
-
-                            return html;
+                        if (row.latitude_out && row.longitude_out) {
+                            html += "<button type='button' class='ui teal tiny circular icon button' title='View Clock Out Location' " +
+                                    "onclick=\"showLocationMap(" + row.latitude_out + ", " + row.longitude_out + ", 'Clock Out — " + empLabel + " (" + row.date + ")')\">" +
+                                    "<i class='map marker alternate icon'></i></button>";
                         }
 
-                        if (cc === "on") {
-                            tbody.append("<tr>"+ 
+                        if (!row.latitude_in && !row.latitude_out) {
+                            html = "<span style='color:#9ca3af; font-size:12px;'>—</span>";
+                        }
+
+                        return html;
+                    }
+
+                    if (cc === "on") {
+                        tbody.append("<tr>"+ 
+                                "<td>"+employee[i].date+"</td>" + 
+                                "<td>"+employee[i].employee+"</td>" + 
+                                "<td>"+time(1)+"</td>" + 
+                                "<td>"+time(2)+"</td>" + 
+                                "<td>"+th(employee[i].totalhours)+"</td>" + 
+                                "<td>"+d_status(in_status, out_status)+"</td>" + 
+                                "<td>"+locationButtons(employee[i])+"</td>" + 
+                                "<td>"+employee[i].comment+"</td>" + 
+                                "<td class='align-right'><a href='"+ url + "/attendance/edit/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='edit outline icon'></i></a> <a href='"+ url + "/attendance/delete/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='trash alternate outline icon'></i></a>" +
+                                "</td>"+
+                            "</tr>");
+                    } else {
+                        tbody.append("<tr>"+ 
                                     "<td>"+employee[i].date+"</td>" + 
                                     "<td>"+employee[i].employee+"</td>" + 
                                     "<td>"+time(1)+"</td>" + 
@@ -323,31 +350,27 @@ $('select[name="name"]').on('change', function () {
                                     "<td>"+th(employee[i].totalhours)+"</td>" + 
                                     "<td>"+d_status(in_status, out_status)+"</td>" + 
                                     "<td>"+locationButtons(employee[i])+"</td>" + 
-                                    "<td>"+employee[i].comment+"</td>" + 
                                     "<td class='align-right'><a href='"+ url + "/attendance/edit/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='edit outline icon'></i></a> <a href='"+ url + "/attendance/delete/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='trash alternate outline icon'></i></a>" +
                                     "</td>"+
                                 "</tr>");
-                        } else {
-                            tbody.append("<tr>"+ 
-                                        "<td>"+employee[i].date+"</td>" + 
-                                        "<td>"+employee[i].employee+"</td>" + 
-                                        "<td>"+time(1)+"</td>" + 
-                                        "<td>"+time(2)+"</td>" + 
-                                        "<td>"+th(employee[i].totalhours)+"</td>" + 
-                                        "<td>"+d_status(in_status, out_status)+"</td>" + 
-                                        "<td>"+locationButtons(employee[i])+"</td>" + 
-                                        "<td class='align-right'><a href='"+ url + "/attendance/edit/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='edit outline icon'></i></a> <a href='"+ url + "/attendance/delete/" + employee[i].id +"' class='ui circular basic icon button tiny'><i class='trash alternate outline icon'></i></a>" +
-                                        "</td>"+
-                                    "</tr>");
-                        }
                     }
+                }
 
-                    // initialize datatable
-                    $('#dataTables-example').DataTable({responsive: true,pageLength: 15,lengthChange: false,searching: false,ordering: true});
-                }            
-            }
-        })
-    });
+                // initialize datatable
+                $('#dataTables-example').DataTable({responsive: true,pageLength: 15,lengthChange: false,searching: false,ordering: true});
+            }            
+        }
+    })
+}
+
+$('#btnfilter').click(function(event) {
+    event.preventDefault();
+    runAttendanceFilter();
+});
+
+$('#companyfilter').on('change', function() {
+    runAttendanceFilter();
+});
     </script>
 
 

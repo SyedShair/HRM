@@ -75,7 +75,15 @@ if (!empty($p->idexpirydate)) {
                     <div class="box-body employee-info">
                         <div class="author">
                        @php
-    $imagePath = $i
+    // FIX: $i pointing at a filename doesn't guarantee that file still
+    // exists on disk (deleted, moved, or a legacy path saved without
+    // the "avatars/" prefix used by storeAvatarImage()). file_get_contents()
+    // on a missing path throws and crashes the whole profile page instead
+    // of just falling back to the default photo - so check existence on
+    // the actual disk first, the same way the file was originally stored
+    // (Storage::disk('public')), and only fall through to the default
+    // image when either $i is empty OR the file it points to is gone.
+    $imagePath = ($i && Storage::disk('public')->exists($i))
         ? Storage::disk('public')->path($i)
         : public_path('assets/images/faces/default_user.jpg');
 

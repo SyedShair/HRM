@@ -15,17 +15,35 @@ class AttendanceController extends Controller
 {
     use AttendanceShiftHelpers;
 
-    public function index()
+    public function index(Request $request)
     {
         if (permission::permitted('attendance')=='fail'){ return redirect()->route('denied'); }
 
-        $data = table::attendance()->orderBy('date', 'desc')->take(60)->get();
+        $companies = table::company()->orderBy('company')->get();
+
+        $companyId = $request->query('company_id');
+        $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
+
+        if (!$companyId && $companies->isNotEmpty()) {
+            $companyId = $companies->first()->id;
+        }
+
+        $data = table::attendance()
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->join('tbl_company_data as cd', 'cd.reference', '=', 'tbl_people_attendance.reference')
+                  ->where('cd.company_id', $companyId)
+                  ->select('tbl_people_attendance.*');
+            })
+            ->orderBy('date', 'desc')
+            ->take(60)
+            ->get();
+
         $ss = table::settings()->select('clock_comment', 'time_format')->first();
         $employees = table::people()->get();
         $tf = table::settings()->value("time_format");
         $cc = table::settings()->value("clock_comment");
 
-        return view('admin.attendance', compact('data', 'ss', 'employees', 'tf', 'cc'));
+        return view('admin.attendance', compact('data', 'ss', 'employees', 'tf', 'cc', 'companies', 'companyId'));
     }
 
     public function clock()
@@ -38,7 +56,14 @@ class AttendanceController extends Controller
         if (permission::permitted('attendance-edit')=='fail'){ return redirect()->route('denied'); }
 
         $a = table::attendance()->where('id', $id)->first();
-        $e_id = ($a->id == null) ? 0 : Crypt::encryptString($a->id) ;
+
+        // A missing/bad id previously crashed here on $a->id (property
+        // access on null) instead of failing gracefully.
+        if (!$a) {
+            return redirect('attendance')->with('error', trans('Attendance record not found.'));
+        }
+
+        $e_id = Crypt::encryptString($a->id);
         $tf = table::settings()->value("time_format");
 
         return view('admin.edits.edit-attendance', compact('a', 'e_id', 'tf'));
@@ -48,8 +73,19 @@ class AttendanceController extends Controller
     {
         if (permission::permitted('attendance-delete')=='fail'){ return redirect()->route('denied'); }
 
-        $id = $request->id;
+        // The route already binds $id - it was previously discarded and
+        // silently replaced with $request->id (the same anti-pattern
+        // fixed in ProfileController::archive()), making the route
+        // parameter dead code and this action fragile if the form field
+        // was ever missing or renamed.
         $find = table::attendance()->where('id', $id)->first();
+
+        // A missing/already-deleted id previously crashed here on
+        // $find->idno (property access on null) instead of failing
+        // gracefully.
+        if (!$find) {
+            return redirect('attendance')->with('error', trans('Attendance record not found.'));
+        }
 
         // Delete existing salary record for the same day (optional to avoid duplicates)
         DB::table('daily_salaries')->where([
@@ -149,7 +185,11 @@ class AttendanceController extends Controller
         ]);
 
         $find = table::attendance()->where('id', $id)->first();
-        $emp = DB::table('tbl_people')->where('id', $find->reference)->first();
+        // Guarded: $find should always exist right after the update
+        // above, but this avoids a crash on $find->reference if it
+        // somehow doesn't (e.g. deleted concurrently). $emp itself is
+        // currently only consumed by the disabled salary block below.
+        $emp = $find ? DB::table('tbl_people')->where('id', $find->reference)->first() : null;
 
         // if ($emp && $emp->perhourpay) {
         //     $employee_id = $emp->id;
@@ -179,23 +219,27 @@ class AttendanceController extends Controller
         return redirect('attendance')->with('success', trans("Employee attendance has been updated!"));
     }
 
+    /**
+     * POST /attendance/add-entry - "Make Attendance" from the Today
+     * Shifts board (and anywhere else that posts here with a plain
+     * employee id in `ref`).
+     */
     public function addEntry(Request $request)
     {
-dd($request->all());
-            
         if (permission::permitted('attendance')=='fail'){ return redirect()->route('denied'); }
         if ($request->ref == NULL) {
             return redirect('attendance')->with('error', trans("Please fill the form completely."));
         }
 
         $v = $request->validate([
-            'ref' => 'required|max:250',
+            'ref' => 'required|integer|exists:tbl_people,id',
             'date' => 'required|max:15',
             'timein' => 'required|max:15',
             'timeout' => 'nullable|max:15',
         ]);
 
         $reference = $request->ref;
+
         $date = $this->parseDateInOrgTz($request->date);
 
         // Canonical storage format: 24-hour H:i:s, parsed through the org
@@ -206,11 +250,15 @@ dd($request->all());
         $ip = $request->ip();
         $tf = table::settings()->value('time_format');
 
-        // ip resriction
+        // ip restriction
         $iprestriction = table::settings()->value('iprestriction');
         if ($iprestriction != NULL)
         {
-            $ips = explode(",", $iprestriction);
+            // Trimmed: an admin-entered list like "1.2.3.4, 5.6.7.8"
+            // (with a space after the comma) previously failed to match
+            // the second entry, since the request IP is never padded
+            // with a leading space.
+            $ips = array_map('trim', explode(",", $iprestriction));
 
             if(in_array($ip, $ips) == false)
             {
@@ -218,20 +266,37 @@ dd($request->all());
             }
         }
 
-        $emp_id = table::companydata()->where('id', $reference)->value('reference');
-        $emp_idno = table::companydata()->where('id', $reference)->value('idno');
+        // Resolve the employee directly from their real database id
+        // (reference), exactly once, the same correct way
+        // markRange()/Today Shifts already do it.
+        $emp = table::people()->where('id', $reference)->first();
+        $companyData = table::companydata()->where('reference', $reference)->first();
 
-        if($emp_id == null || $emp_idno == null) {
+        if ($emp == null || $companyData == null) {
             return redirect('attendance')->with('error', trans("Employee is not found."));
         }
 
-        $emp = table::people()->where('id', $emp_id)->first();
+        $emp_id = $emp->id;
+        $emp_idno = $companyData->idno;
+
         $lastname = $emp->lastname;
         $firstname = $emp->firstname;
         $mi = $emp->mi;
         $employee = mb_strtoupper($lastname.', '.$firstname.' '.$mi);
 
         $shift = $this->resolveShift($emp_idno, $date);
+
+        // No active schedule at all, or no weekly_shifts row for this day
+        // of week - there's nothing to record attendance against, so
+        // refuse rather than silently saving as "Ok" with 0 late/early/
+        // overtime minutes, which would misrepresent the record as
+        // matching a rota that doesn't actually exist.
+        if ($shift === null) {
+            return redirect('attendance')->with('error', trans(
+                "No rota/schedule is set for :employee on :date. Please set up their weekly schedule before recording attendance.",
+                ['employee' => $employee, 'date' => \Carbon\Carbon::parse($date)->format('d M Y')]
+            ));
+        }
 
         if ($timeout == null)
         {
@@ -250,12 +315,12 @@ dd($request->all());
                 $late_minutes = 0;
                 $early_in_minutes = 0;
 
-                if ($shift !== null && $shift['is_off']) {
+                if ($shift['is_off']) {
                     // Rest day, but they physically clocked in - record it
                     // and flag it rather than silently treating it as a
                     // normal working day.
                     $status_in = 'Rest Day';
-                } elseif ($shift !== null) {
+                } else {
                     $schedIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$shift['time_in']);
                     $actualIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$timein);
 
@@ -306,10 +371,10 @@ dd($request->all());
                 $actualIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$timein);
                 $actualOut = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$timeout);
 
-                if ($shift !== null && $shift['is_off']) {
+                if ($shift['is_off']) {
                     $status_in = 'Rest Day';
                     $status_out = 'Rest Day';
-                } elseif ($shift !== null) {
+                } else {
                     $schedIn = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$shift['time_in']);
                     $schedOut = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$shift['time_out']);
 
@@ -495,23 +560,44 @@ dd($request->all());
         ]);
     }
 
-    public function getFilter(Request $request)
-    {
-        if (permission::permitted('reports')=='fail'){ return redirect()->route('denied'); }
-
-        $datefrom = $request->datefrom;
-        $dateto = $request->dateto;
-
-        if ($datefrom == null AND $dateto == null)
-        {
-            $data = table::attendance()->select('id', 'idno', 'date', 'employee', 'timein', 'timeout', 'totalhours', 'comment', 'status_timein', 'status_timeout', 'late_minutes', 'early_in_minutes', 'early_minutes', 'overtime_minutes')->get();
-            return response()->json($data);
-        }
-
-        if ($datefrom !== null AND $dateto !== null)
-        {
-            $data = table::attendance()->whereBetween('date', [$datefrom, $dateto])->select('id', 'idno', 'date', 'employee', 'timein', 'timeout', 'totalhours', 'comment', 'status_timein', 'status_timeout', 'late_minutes', 'early_in_minutes', 'early_minutes', 'overtime_minutes')->get();
-            return response()->json($data);
-        }
+    /**
+     * GET /attendance/filter - AJAX date-range + company filter used by
+     * admin.attendance's "Filter" button and company dropdown.
+     */
+  public function getFilter(Request $request)
+{
+    if (permission::permitted('reports') == 'fail') {
+        return redirect()->route('denied');
     }
+
+    $datefrom = $request->datefrom;
+    $dateto   = $request->dateto;
+
+    $companyId = $request->company_id;
+
+    $companyId = ($companyId !== null && is_numeric($companyId))
+        ? (int) $companyId
+        : null;
+
+    $query = table::attendance()
+        ->when($companyId !== null, function ($q) use ($companyId) {
+            $q->join(
+                'tbl_company_data as cd',
+                'cd.reference',
+                '=',
+                'tbl_people_attendance.reference'
+            )
+            ->where('cd.company_id', $companyId);
+        })
+        ->select('tbl_people_attendance.*');
+
+    if ($datefrom !== null && $dateto !== null) {
+        $query->whereBetween(
+            'tbl_people_attendance.date',
+            [$datefrom, $dateto]
+        );
+    }
+
+    return response()->json($query->get());
+}
 }
