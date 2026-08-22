@@ -99,6 +99,7 @@ Route::group(['middleware' => 'auth'], function () {
     Route::post('/chat/message/delete/{id}', [ChatController::class, 'deleteMessage']);
     Route::post('/chat/typing', [ChatController::class, 'typing']);
     Route::get('/chat/typing/{id}', [ChatController::class, 'getTyping']);
+    Route::get('/chat/poll/{id}', [ChatController::class, 'poll']);
 
     Route::get('/payroll',                 [PayrollController::class, 'index'])->name('payroll.index');
     Route::post('/payroll/generate',       [PayrollController::class, 'generate'])->name('payroll.generate');

@@ -430,10 +430,21 @@ body {
 function clearFile() {
     $('#file').val('');
     $('#file-preview').hide().html('');
+    $('#message').attr('placeholder', 'Type a message....');
 }
 let receiverId = "{{ $receiver->id }}";
 let currentUserId = "{{ auth()->id() }}";
 let shouldScroll = true;
+
+// Every message id currently rendered in the DOM, so a duplicate id
+// coming back from any poll can never be appended twice - a
+// belt-and-suspenders safeguard on top of the backend fix (poll() had
+// an operator-precedence bug that made it return the same sent
+// message(s) on every single poll; that's fixed server-side now, but
+// this also protects against the unrelated edge case of two poll
+// requests overlapping under network lag before lastMessageId updates).
+let renderedMessageIds = new Set();
+let pollInFlight = false;
 
 /* =========================
    SCROLL CHECK
@@ -473,15 +484,115 @@ $(document).ready(function () {
         });
     }
 
-    loadMessages();
+    // Initial full load - builds the whole thread once.
+    loadMessages(true);
 
-    setInterval(loadMessages, 2000);
+    startPolling();
+
+    // Pause everything while this tab isn't visible - no reason to hit
+    // the server for a chat window nobody is looking at. Resume with
+    // an immediate poll + a fresh full reconcile the moment it's back.
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            stopPolling();
+        } else {
+            loadMessages(true);
+            startPolling();
+        }
+    });
+
+    // Stop timers when navigating away, so a stray interval never
+    // outlives the page it was created on.
+    window.addEventListener('beforeunload', stopPolling);
 });
 
 /* =========================
-   LOAD MESSAGES
+   POLLING (delta + typing merged into one request)
 ========================= */
-function loadMessages() {
+let lastMessageId = 0;
+let pollTimer = null;
+let fullSyncTimer = null;
+
+function startPolling() {
+    if (pollTimer) return; // already running
+
+    // Delta poll: only asks for messages newer than the last one we
+    // have, plus typing status, in a single request - replaces the old
+    // separate 2s loadMessages() + 1s checkTyping() timers entirely,
+    // which were hitting the server twice a second across every open
+    // chat window regardless of whether anything had actually changed.
+    pollTimer = setInterval(pollForUpdates, 3000);
+
+    // Full reconcile: rebuilds the whole thread from the server every
+    // 20s, to pick up edits/deletes that a delta poll can't see (an
+    // edited/deleted message has no NEW id, so it's invisible to the
+    // "after_id" query). 20s is frequent enough that edits show up
+    // promptly without re-fetching full history every few seconds.
+    fullSyncTimer = setInterval(function () {
+        loadMessages(true);
+    }, 20000);
+}
+
+function stopPolling() {
+    clearInterval(pollTimer);
+    clearInterval(fullSyncTimer);
+    pollTimer = null;
+    fullSyncTimer = null;
+}
+
+function pollForUpdates() {
+
+    // Skip this cycle entirely if the previous poll hasn't come back
+    // yet, rather than firing an overlapping request on top of it.
+    if (pollInFlight) return;
+    pollInFlight = true;
+
+    $.ajax({
+        url: '/chat/poll/' + receiverId,
+        type: 'GET',
+        dataType: 'json',
+        cache: false,
+        data: { after_id: lastMessageId },
+
+        success: function (res) {
+
+            if (res.messages && res.messages.length > 0) {
+                appendMessages(res.messages);
+            }
+
+            renderTyping(res.typing, res.typing_name);
+        },
+
+        error: function () {
+            console.log('Poll failed');
+        },
+
+        complete: function () {
+            pollInFlight = false;
+        }
+    });
+}
+
+/* =========================
+   RENDER TYPING
+========================= */
+function renderTyping(typing, name) {
+    if (typing == 1) {
+        $('#typing-box').html(`
+            <span style="margin-right:8px;">${escapeHtml(name)} is typing</span>
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+        `).show();
+    } else {
+        $('#typing-box').hide();
+    }
+}
+
+/* =========================
+   LOAD MESSAGES (full thread - initial load + periodic reconcile)
+========================= */
+function loadMessages(isFullSync) {
 
     $.ajax({
         url: '/chat/messages/' + receiverId,
@@ -491,82 +602,107 @@ function loadMessages() {
 
         success: function (data) {
 
-            let html = '';
+            renderMessageList(data);
 
-data.forEach(msg => {
+            renderedMessageIds = new Set(data.map(m => m.id));
+
+            if (data.length > 0) {
+                lastMessageId = Math.max(...data.map(m => m.id));
+            }
+
+            if (isFullSync) {
+                scrollToBottom(true);
+            } else {
+                scrollToBottom();
+            }
+        },
+        error: function () {
+            console.log('Failed to load messages');
+        }
+    });
+}
+
+/* =========================
+   APPEND (delta poll result - adds only new rows, no full rebuild)
+========================= */
+function appendMessages(messages) {
+
+    // Drop anything already on screen before building/appending HTML -
+    // see the renderedMessageIds comment near the top of this file.
+    let newMessages = messages.filter(m => !renderedMessageIds.has(m.id));
+
+    if (newMessages.length === 0) {
+        return;
+    }
+
+    let html = newMessages.map(buildMessageHtml).join('');
+
+    $('#chat-box').append(html);
+
+    newMessages.forEach(m => renderedMessageIds.add(m.id));
+    lastMessageId = Math.max(lastMessageId, ...newMessages.map(m => m.id));
+
+    scrollToBottom();
+}
+
+/* =========================
+   RENDER (full rebuild - only called on initial load / reconcile)
+========================= */
+function renderMessageList(data) {
+    let html = data.map(buildMessageHtml).join('');
+    $('#chat-box').html(html);
+}
+
+/* =========================
+   BUILD ONE MESSAGE BUBBLE (shared by full render + delta append)
+========================= */
+function buildMessageHtml(msg) {
 
     let mine = msg.sender_id == currentUserId;
 
-   
+    let fileHtml = '';
 
-    // =========================
-    // FILE / IMAGE RENDER (FIXED — uses msg.file_url returned by backend)
-    // =========================
-let fileHtml = '';
+    if (msg.file_url) {
 
-if (msg.file_url) {
+        let ext = msg.file.split('.').pop().toLowerCase();
 
-    let ext = msg.file.split('.').pop().toLowerCase();
-
-    // =========================
-    // IMAGE
-    // =========================
-    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
-
-        fileHtml = `
-            <div style="margin-top:8px;">
-                <img src="${msg.file_url}"
-                     onclick="openLightbox('${msg.file_url}')"
-                     style="max-width:220px;
-                            border-radius:12px;
-                            cursor:pointer;
-                            display:block;
-                            object-fit:cover;">
-            </div>
-        `;
+        if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+            fileHtml = `
+                <div style="margin-top:8px;">
+                    <img src="${msg.file_url}"
+                         onclick="openLightbox('${msg.file_url}')"
+                         style="max-width:220px;
+                                border-radius:12px;
+                                cursor:pointer;
+                                display:block;
+                                object-fit:cover;">
+                </div>
+            `;
+        } else if (ext === 'pdf') {
+            fileHtml = `
+                <div style="margin-top:8px;">
+                    📄 <a href="${msg.file_url}" target="_blank">View PDF</a>
+                </div>
+            `;
+        } else {
+            fileHtml = `
+                <div style="margin-top:8px;">
+                    ⬇ <a href="${msg.file_url}" target="_blank">Download File</a>
+                </div>
+            `;
+        }
     }
 
-    // =========================
-    // PDF
-    // =========================
-    else if (ext === 'pdf') {
-
-        fileHtml = `
-            <div style="margin-top:8px;">
-                📄 <a href="${msg.file_url}" target="_blank">View PDF</a>
-            </div>
-        `;
-    }
-
-    // =========================
-    // OTHER FILES
-    // =========================
-    else {
-
-        fileHtml = `
-            <div style="margin-top:8px;">
-                ⬇ <a href="${msg.file_url}" target="_blank">Download File</a>
-            </div>
-        `;
-    }
-}
-    // =========================
-    // DELETED MESSAGE
-    // =========================
     if (msg.is_deleted == 1) {
-        html += `
+        return `
 <div class="message-row ${mine ? 'me' : 'other'}">
     <div class="message-bubble deleted">
         This message was deleted
     </div>
 </div>`;
-        return;
     }
 
-    // =========================
-    // MESSAGE UI
-    // =========================
-    html += `
+    return `
 <div class="message-row ${mine ? 'me' : 'other'}">
 
     <div class="message-bubble">
@@ -610,17 +746,6 @@ if (msg.file_url) {
     </div>
 
 </div>`;
-});       
-
-
-$('#chat-box').html(html);
-            scrollToBottom();
-
-        },
-        error: function () {
-            console.log('Failed to load messages');
-        }
-    });
 }
 
 /* =========================
@@ -632,6 +757,16 @@ function sendMessage() {
     let file = $('#file')[0].files[0];
 
     if (message === '' && !file) return;
+
+    // A file must always be sent with a caption explaining what it's
+    // for - never let an attachment go out with no context. The
+    // placeholder set in the #file change handler above hints at this;
+    // this is the actual enforcement.
+    if (file && message === '') {
+        toastr.error('Please write what this file is for before sending.');
+        $('#message').focus();
+        return;
+    }
 
     let formData = new FormData();
 
@@ -654,8 +789,7 @@ function sendMessage() {
             $('#message').val('');
             $('#file').val('');
 
-            loadMessages();
-            scrollToBottom(true);
+            loadMessages(true);
  clearFile()
             sendTyping(false);
         }
@@ -753,7 +887,7 @@ function editMessage(id, oldMessage) {
 
             toastr.success('Message updated');
 
-            loadMessages();
+            loadMessages(true);
         }
     });
 }/* =========================
@@ -779,7 +913,7 @@ function deleteMessage(id) {
 
                 if (res.success) {
                     toastr.success('Message deleted');
-                    loadMessages();
+                    loadMessages(true);
                 } else {
                     toastr.error('Delete failed');
                 }
@@ -797,6 +931,10 @@ function deleteMessage(id) {
 function escapeHtml(text) {
     return $('<div>').text(text).html();
 }
+
+/* =========================
+   TYPING (send-side only - detection now comes back via pollForUpdates)
+========================= */
 let typingTimer;
 let isTyping = false;
 $(document).on('input', '#message', function () {
@@ -825,28 +963,7 @@ function sendTyping(status){
         }
     });
 }
-function checkTyping(){
 
-    $.get('/chat/typing/' + receiverId, function(res){
-
-        if(res.typing == 1){
-
-            $('#typing-box').html(`
-               <span style="margin-right:8px;">${res.name} is typing</span> <div class="typing-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                     <span></span>
-                </div>
-                
-            `).show();
-
-        } else {
-            $('#typing-box').hide();
-        }
-    });
-}
-setInterval(checkTyping, 1000);
 function openLightbox(src){
     document.getElementById('lightbox-img').src = src;
     document.getElementById('image-lightbox').style.display = 'flex';
@@ -856,21 +973,51 @@ function closeLightbox(){
     document.getElementById('image-lightbox').style.display = 'none';
     document.getElementById('lightbox-img').src = '';
 }
+/* =========================
+   ATTACHMENT TYPE VALIDATION + REQUIRED CAPTION
+========================= */
+const ALLOWED_FILE_TYPES = {
+    'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'webp': 'image',
+    'pdf': 'pdf',
+    'doc': 'doc', 'docx': 'doc'
+};
+
 $('#file').on('change', function () {
 
     let file = this.files[0];
 
     if (!file) return;
 
-    let reader = new FileReader();
     let ext = file.name.split('.').pop().toLowerCase();
+    let fileType = ALLOWED_FILE_TYPES[ext];
 
+    // Reject anything outside the types this chat actually supports.
+    // The file input's `accept` attribute is only a UI hint - most OS
+    // file pickers let someone switch to "All Files" and select
+    // anything regardless - so this is the real enforcement point on
+    // the client, with a clear error instead of silently attaching
+    // something that isn't really supported.
+    if (!fileType) {
+        toastr.error("That file type isn't supported. Please attach an image, PDF, or Word document.");
+        clearFile();
+        return;
+    }
+
+    let reader = new FileReader();
     let preview = $('#file-preview');
 
     preview.show();
 
+    // Don't guess a caption for the user - prompt them to write their
+    // own description of what the file is for via the placeholder, and
+    // sendMessage() below refuses to send until they actually do.
+    let $message = $('#message');
+    if ($message.val().trim() === '') {
+        $message.attr('placeholder', 'What is this file for?').focus();
+    }
+
     // IMAGE PREVIEW
-    if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    if (fileType === 'image') {
 
         reader.onload = function (e) {
             preview.html(`
@@ -893,7 +1040,7 @@ $('#file').on('change', function () {
         reader.readAsDataURL(file);
     }
 
-    // PDF / FILE PREVIEW
+    // PDF / DOC PREVIEW
     else {
 
         preview.html(`
@@ -906,4 +1053,5 @@ $('#file').on('change', function () {
     }
 });
 
-</script>@endsection
+</script>
+@endsection
