@@ -595,9 +595,11 @@
                         <p>{{ __('Users') }}</p>
                     </a>
                 </li>
-
-               
-
+             <li>
+               <a href="{{ url('meetings') }}">
+    <i class="video icon"></i> {{ __('Meetings') }}
+</a>
+             </li>
                 <li>
                     <a href="{{ url('payroll') }}">
                         <i class="ui icon money bill alternate outline"></i>
