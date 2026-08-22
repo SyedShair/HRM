@@ -215,6 +215,34 @@
                                         </div>
                                     </div>
 
+                                    <h3 class="ui sub header">{{ __("Meetings") }}</h3>
+                                    <div class="item">
+                                        <div class="ui master checkbox">
+                                            <input type="checkbox" @isset($d) @if(in_array('17', $d)==true) checked @endif @endisset name="perms[]" value="17">
+                                            <label>{{ __("Open Meetings page") }}</label>
+                                        </div>
+                                        <div class="list">
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('171', $d)==true) checked @endif @endisset name="perms[]" value="171">
+                                                    <label>{{ __("Schedule Meeting") }}</label>
+                                                </div>
+                                            </div>
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('172', $d)==true) checked @endif @endisset name="perms[]" value="172">
+                                                    <label>{{ __("Edit Meeting notes") }}</label>
+                                                </div>
+                                            </div>
+                                            <div class="item">
+                                                <div class="ui child checkbox slider">
+                                                    <input type="checkbox" @isset($d) @if(in_array('173', $d)==true) checked @endif @endisset name="perms[]" value="173">
+                                                    <label>{{ __("Cancel Meeting") }}</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <h3 class="ui sub header">{{ __("Reports") }}</h3>
                                     <div class="item">
                                         <div class="ui master checkbox">
@@ -365,16 +393,17 @@
                                                     <input type="checkbox" @isset($d) @if(in_array('133', $d)==true) checked @endif @endisset name="perms[]" value="133">
                                                     <label>{{ __("Edit Job title") }}</label>
                                                 </div>
+                                            </div>
                                         </div>
                                     </div>
-                          
 
-                          <h3 class="ui sub header">{{ __("clock") }}</h3>
+                                    <h3 class="ui sub header">{{ __("clock") }}</h3>
                                     <div class="item">
                                         <div class="ui master checkbox">
                                             <input type="checkbox" @isset($d) @if(in_array('6', $d)==true) checked @endif @endisset name="perms[]" value="6">
                                             <label>{{ __("Personal Attendance") }}</label>
-                                            <div class="list">
+                                        </div>
+                                        <div class="list">
                                             <div class="item">
                                                 <div class="ui child checkbox slider">
                                                     <input type="checkbox" @isset($d) @if(in_array('61', $d)==true) checked @endif @endisset name="perms[]" value="61">
@@ -382,8 +411,8 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        
                                     </div>
+
                                     <h3 class="ui sub header">{{ __("Leave types") }}</h3>
                                     <div class="item">
                                         <div class="ui master checkbox">

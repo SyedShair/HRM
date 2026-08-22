@@ -70,6 +70,14 @@ Class permission {
             162 => 'payroll-generate',
             163 => 'payroll-status',
             164 => 'payroll-delete',
+
+        // Meetings (Zoom) - referenced by MeetingsController via
+        // permission::permitted('meetings'), ('meetings-add'),
+        // ('meetings-edit'), ('meetings-delete').
+        17 => 'meetings',
+            171 => 'meetings-add',
+            172 => 'meetings-edit',
+            173 => 'meetings-delete',
     ];
 
     public static function permitted($page) 

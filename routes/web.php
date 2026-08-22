@@ -47,6 +47,12 @@ use App\Http\Controllers\Personal\PersonalLeavesController;
 use App\Http\Controllers\Personal\PersonalSettingsController;
 use App\Http\Controllers\Personal\PersonalAccountController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\MeetingsController;
+use App\Http\Controllers\ZoomWebhookController;
+
+
+
+
 
 use App\Http\Controllers\Auth\LoginController;
 
@@ -58,6 +64,8 @@ Route::get('/clear-cache', function () {
 
     return "OK";
 });
+ // routes/web.php
+           Route::post('zoom/webhook', [ZoomWebhookController::class, 'handle']);
 
 Route::get('/mail-test', function () {
     Mail::raw("Test mail working", function ($message) {
@@ -124,7 +132,30 @@ Route::group(['middleware' => 'auth'], function () {
             Route::get('clock', [ClockController::class, 'clock']);
             Route::post('attendance/add', [ClockController::class, 'add']);
 
+  /*
+            |--------------------------------------------------------------------------
+            | ZOOM  Meetings
+            |--------------------------------------------------------------------------
+            */
+            Route::get('meetings', [MeetingsController::class, 'index']);
+
+            Route::get('meetings/create', [MeetingsController::class, 'create']);
+
+            Route::post('meetings', [MeetingsController::class, 'store']);
+
+            Route::get('meetings/{id}', [MeetingsController::class, 'show']);
+
+            Route::get('meetings/{id}/cancel', [MeetingsController::class, 'cancel']);
+
+            Route::get('meetings/{id}/sync-recording', [MeetingsController::class, 'syncRecording']);
+
+           Route::post('meetings/{id}/notes', [MeetingsController::class, 'updateNotes']);
+
+          
             /*
+
+
+            
             |--------------------------------------------------------------------------
             | Dashboard
             |--------------------------------------------------------------------------

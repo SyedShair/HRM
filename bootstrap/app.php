@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin'       => \App\Http\Middleware\Admin::class,
             'employee'    => \App\Http\Middleware\Employee::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'zoom/webhook',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
