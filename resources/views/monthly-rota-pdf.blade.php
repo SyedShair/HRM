@@ -1,80 +1,127 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<style>
-    body{ font-family: DejaVu Sans, sans-serif; font-size:9px; color:#111; }
-    h2{ margin:0 0 4px; font-size:16px; }
-    p.sub{ margin:0 0 14px; color:#555; }
-    table{ border-collapse:collapse; width:100%; }
-    th, td{ border:1px solid #ccc; padding:3px; text-align:center; }
-    th{ background:#3E5B54; color:#fff; font-size:8px; }
-    td.emp{ text-align:left; font-weight:bold; white-space:nowrap; }
-    td.emp small{ display:block; font-weight:normal; color:#666; }
-    .off{ background:#f1f5f9; color:#94a3b8; }
-    .morning{ background:#C9A227; color:#fff; }
-    .day{ background:#607570; color:#fff; }
-    .evening{ background:#7C948E; color:#fff; }
-    .night{ background:#2B3D37; color:#fff; }
-    .blank{ color:#ccc; }
-</style>
+    <meta charset="utf-8">
+    <title>Monthly Staff Rota</title>
+
+    <style>
+        body {
+            font-family: DejaVu Sans, sans-serif;
+            font-size: 9px;
+            color: #111827;
+        }
+
+        .logo {
+            display: block;
+            max-width: 100px;
+            max-height: 50px;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #06b6d4;
+            color: white;
+            padding: 4px;
+            border: 1px solid #d1d5db;
+        }
+
+        td {
+            padding: 4px;
+            border: 1px solid #d1d5db;
+            text-align: center;
+        }
+
+        .staff {
+            text-align: left;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .off { background: #f3f4f6; color: #6b7280; }
+        .morning { background: #fcd34d; }
+        .day { background: #7dd3fc; }
+        .evening { background: #c084fc; color: white; }
+        .night { background: #334155; color: white; }
+    </style>
 </head>
 <body>
 
-    <h2>Monthly Rota &mdash; {{ $monthStart->format('F Y') }}</h2>
-    <p class="sub">Generated {{ now()->format('d M Y, H:i') }}</p>
+@php
+    $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+    $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
 
-    <table>
-        <thead>
+    // Use public_path() rather than an asset() URL - dompdf reads local
+    // files far more reliably than it fetches remote/HTTP URLs.
+    $appLogo = !empty($appSettings->app_logo)
+        ? public_path('storage/'.$appSettings->app_logo)
+        : public_path('assets/images/img/logo.png');
+@endphp
+<img class="logo" src="{{ $appLogo }}" alt="{{ $appName }} logo">
+
+<h2>Monthly Staff Rota - {{ $monthStart->format('F Y') }}</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th class="staff">Staff</th>
+            @foreach($dates as $date)
+                <th>{{ $date->format('D d') }}</th>
+            @endforeach
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($employees as $employee)
+            @php
+                $fullname = strtoupper($employee->lastname.', '.$employee->firstname);
+            @endphp
             <tr>
-                <th>Employee</th>
-                @foreach($days as $d)
-                    <th>{{ $d->format('D') }}<br>{{ $d->format('d') }}</th>
+                <td class="staff">{{ $fullname }} ({{ $employee->idno }})</td>
+
+                @foreach($dates as $date)
+                    @php
+                        $dayName = $date->format('l');
+                        $shift = $weeklyShifts
+                            ->where('reference', $employee->reference)
+                            ->where('day', $dayName)
+                            ->first();
+
+                        $class = 'off';
+                        $label = 'OFF';
+
+                        if ($shift && $shift->is_off == 0) {
+                            $timeIn = date('H:i', strtotime($shift->time_in));
+                            $timeOut = date('H:i', strtotime($shift->time_out));
+                            $hour = (int) date('H', strtotime($shift->time_in));
+
+                            if ($hour < 12) {
+                                $class = 'morning';
+                            } elseif ($hour < 16) {
+                                $class = 'day';
+                            } elseif ($hour < 20) {
+                                $class = 'evening';
+                            } else {
+                                $class = 'night';
+                            }
+
+                            $label = $timeIn.'-'.$timeOut;
+                        }
+                    @endphp
+                    <td class="{{ $class }}">{{ $label }}</td>
                 @endforeach
             </tr>
-        </thead>
-        <tbody>
-            @foreach($employees as $employee)
-                @php
-                    $fullname = strtoupper($employee->lastname . ', ' . $employee->firstname);
-                    $empShifts = $weeklyShifts->where('reference', $employee->reference)->keyBy('day');
-                    $scheduleFrom = $employee->datefrom ? \Carbon\Carbon::parse($employee->datefrom) : null;
-                    $scheduleTo = $employee->dateto ? \Carbon\Carbon::parse($employee->dateto) : null;
-                @endphp
-                <tr>
-                    <td class="emp">
-                        {{ $fullname }}
-                        <small>ID: {{ $employee->idno }}</small>
-                    </td>
-
-                    @foreach($days as $d)
-                        @php
-                            $inRange = (!$scheduleFrom || $d->gte($scheduleFrom))
-                                && (!$scheduleTo || $d->lte($scheduleTo));
-
-                            $dayName = $d->format('l');
-                            $shift = $empShifts->get($dayName);
-
-                            $class = 'blank';
-                            $label = '-';
-
-                            if ($inRange && $shift) {
-                                if ((int) $shift->is_off === 1 || !$shift->time_in) {
-                                    $class = 'off';
-                                    $label = 'OFF';
-                                } else {
-                                    $hour = (int) date('H', strtotime($shift->time_in));
-                                    $class = $hour < 12 ? 'morning' : ($hour < 16 ? 'day' : ($hour < 20 ? 'evening' : 'night'));
-                                    $label = date('H:i', strtotime($shift->time_in)) . '-' . date('H:i', strtotime($shift->time_out));
-                                }
-                            }
-                        @endphp
-                        <td class="{{ $class }}">{{ $label }}</td>
-                    @endforeach
-                </tr>
-            @endforeach
-        </tbody>
-    </table>
+        @endforeach
+    </tbody>
+</table>
 
 </body>
 </html>

@@ -68,27 +68,39 @@ Route::get('/mail-test', function () {
     return "Mail sent";
 });
 
-Route::get('/employee/{id}/print-pdf', [EmployeeDocumentController::class, 'printPdf'])->name('employee.print.pdf');
-
-Route::get('schedules/pdf/{id}', [SchedulesController::class, 'pdf']);
-
-Route::get('/chat', [ChatController::class, 'index'])->name('chat');
-Route::get('/chat/user/{id}', [ChatController::class, 'chat']);
-Route::get('/chat/messages/{id}', [ChatController::class, 'fetchMessages']);
-Route::post('/chat/send', [ChatController::class, 'sendMessage']);
-Route::post('/chat/read', [ChatController::class, 'markAsRead']);
-Route::get('/chat/unread-count', [ChatController::class, 'unreadCount']);
-Route::post('/chat/message/update/{id}', [ChatController::class, 'updateMessage']);
-Route::post('/chat/message/delete/{id}', [ChatController::class, 'deleteMessage']);
-Route::post('/chat/typing', [ChatController::class, 'typing']);
-Route::get('/chat/typing/{id}', [ChatController::class, 'getTyping']);
-
-// Add near your other authenticated routes in routes/web.php:
-
-
-
 Route::group(['middleware' => 'auth'], function () {
-Route::get('/payroll',                 [PayrollController::class, 'index'])->name('payroll.index');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Moved inside auth: these were previously declared ABOVE the auth
+    | middleware group entirely, meaning anyone - logged in or not - could
+    | open any employee's uploaded documents/PDF, or read/send chat
+    | messages, without a session. That looks like an accidental
+    | misplacement rather than an intentional public API (both rely on
+    | Auth::user() internally), so they're gated the same as everything
+    | else now.
+    |
+    | The old `schedules/pdf/{id}` route (which called a `pdf()` method
+    | that doesn't exist on SchedulesController - only rotaPdf($id) does)
+    | has been removed outright: it was both broken and unauthenticated,
+    | and is fully superseded by the properly-gated
+    | `/rota/pdf/{id}` route further down.
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/employee/{id}/print-pdf', [EmployeeDocumentController::class, 'printPdf'])->name('employee.print.pdf');
+
+    Route::get('/chat', [ChatController::class, 'index'])->name('chat');
+    Route::get('/chat/user/{id}', [ChatController::class, 'chat']);
+    Route::get('/chat/messages/{id}', [ChatController::class, 'fetchMessages']);
+    Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+    Route::post('/chat/read', [ChatController::class, 'markAsRead']);
+    Route::get('/chat/unread-count', [ChatController::class, 'unreadCount']);
+    Route::post('/chat/message/update/{id}', [ChatController::class, 'updateMessage']);
+    Route::post('/chat/message/delete/{id}', [ChatController::class, 'deleteMessage']);
+    Route::post('/chat/typing', [ChatController::class, 'typing']);
+    Route::get('/chat/typing/{id}', [ChatController::class, 'getTyping']);
+
+    Route::get('/payroll',                 [PayrollController::class, 'index'])->name('payroll.index');
     Route::post('/payroll/generate',       [PayrollController::class, 'generate'])->name('payroll.generate');
     Route::get('/payroll/{id}',            [PayrollController::class, 'show'])->name('payroll.show');
     Route::post('/payroll/{id}/status',    [PayrollController::class, 'updateStatus'])->name('payroll.status');
@@ -118,8 +130,8 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
             */
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-          Route::get('dashboard/data', [DashboardController::class, 'ajaxData'])
-    ->name('dashboard.ajaxData');
+            Route::get('dashboard/data', [DashboardController::class, 'ajaxData'])
+                ->name('dashboard.ajaxData');
             /*
             |--------------------------------------------------------------------------
             | Employees
@@ -143,6 +155,11 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
             Route::get('profile/edit/{id}', [ProfileController::class, 'editPerson']);
             Route::post('profile/update', [ProfileController::class, 'updatePerson']);
             Route::get('/employee/{id}/print-profile', [ProfileController::class, 'printProfile'])->name('profile.print');
+
+            // Address-history supporting documents/images, uploaded via
+            // the profile edit form - viewable inline instead of only
+            // being saved invisibly on disk.
+            Route::get('/address-history/{addressId}/document', [ProfileController::class, 'viewAddressDocument'])->name('address.document.view');
             /*
             |--------------------------------------------------------------------------
             | Daily salary
@@ -162,43 +179,56 @@ Route::get('/payroll',                 [PayrollController::class, 'index'])->nam
             Route::post('attendance/update', [AttendanceController::class, 'update']);
             Route::post('attendance/add-entry', [AttendanceController::class, 'addEntry']);
             Route::get('attendance/filter', [AttendanceController::class, 'getFilter']);
-         Route::post('attendance/mark-range', [AttendanceController::class, 'markRange'])
-    ->name('attendance.mark-range');
+            Route::post('attendance/mark-range', [AttendanceController::class, 'markRange'])
+                ->name('attendance.mark-range');
             /*
-           /*
-|--------------------------------------------------------------------------
-| Employee Schedules
-|--------------------------------------------------------------------------
-*/
-Route::get('schedules', [SchedulesController::class, 'index'])->name('schedule');
+            |--------------------------------------------------------------------------
+            | Employee Schedules
+            |--------------------------------------------------------------------------
+            */
+            Route::get('schedules', [SchedulesController::class, 'index'])->name('schedule');
 
-// NEW: entry point from the employee rota list - mirrors the
-// employees/new pattern (GET form -> POST add). Pre-fills the
-// weekly rota builder for one specific employee, the same way
-// "New Employee" pre-fills a blank form.
-Route::get('schedules/new/{employeeId}', [SchedulesController::class, 'create'])->name('schedule.new');
+            // NEW: entry point from the employee rota list - mirrors the
+            // employees/new pattern (GET form -> POST add). Pre-fills the
+            // weekly rota builder for one specific employee, the same way
+            // "New Employee" pre-fills a blank form.
+            Route::get('schedules/new/{employeeId}', [SchedulesController::class, 'create'])->name('schedule.new');
 
-Route::post('schedules/add', [SchedulesController::class, 'add']);
-Route::get('schedules/edit/{id}', [SchedulesController::class, 'edit']);
-Route::post('schedules/update', [SchedulesController::class, 'update']);
-Route::get('schedules/delete/{id}', [SchedulesController::class, 'delete']);
-Route::get('schedules/archive/{id}', [SchedulesController::class, 'archive']);
-Route::post('schedules/weekly', [SchedulesController::class, 'storeWeekly']);
+            Route::post('schedules/add', [SchedulesController::class, 'add']);
+            Route::get('schedules/edit/{id}', [SchedulesController::class, 'edit']);
+            Route::post('schedules/update', [SchedulesController::class, 'update']);
+            Route::get('schedules/delete/{id}', [SchedulesController::class, 'delete']);
+            Route::get('schedules/archive/{id}', [SchedulesController::class, 'archive']);
 
-Route::get('/schedules/weekly/{id}', [SchedulesController::class, 'getWeekly']);
-Route::get('/today-shifts', [SchedulesController::class, 'todayShifts'])->name('today.shifts');
+            // FIX: these two routes called storeWeekly()/getWeekly() - a
+            // separate "save the weekly shifts via AJAX after the fact"
+            // step from an earlier version of this feature. The current
+            // SchedulesController no longer has either method: add() and
+            // update() now build the schedule row AND all 7 weekly_shifts
+            // rows together in one step via saveSchedule(). Left in place,
+            // these routes pointed at nonexistent controller methods and
+            // would throw rather than 404 if anything still called them.
+            //     Route::post('schedules/weekly', [SchedulesController::class, 'storeWeekly']);
+            //     Route::get('/schedules/weekly/{id}', [SchedulesController::class, 'getWeekly']);
 
-Route::get('/staff-rota', [SchedulesController::class, 'index']);
+            Route::get('/today-shifts', [SchedulesController::class, 'todayShifts'])->name('today.shifts');
 
-// FIX: this had no {id} placeholder at all, so there was no way to
-// generate a PDF for one specific employee's schedule. It now takes the
-// tbl_people_schedules row id, same as schedules/edit, /archive, /delete.
-Route::get('/rota/pdf/{id}', [SchedulesController::class, 'rotaPdf'])->name('rota.pdf');
+            Route::get('/staff-rota', [SchedulesController::class, 'index']);
 
-// Monthly Rota - calendar-grid view built from the same
-// recurring weekly_shifts pattern as the weekly rota above.
-Route::get('/monthly-rota', [SchedulesController::class, 'monthlyRota'])->name('monthly.rota');
-Route::get('/monthly-rota/pdf', [SchedulesController::class, 'monthlyRotaPdf'])->name('monthly.rota.pdf');
+            // FIX: this had no {id} placeholder at all, so there was no way to
+            // generate a PDF for one specific employee's schedule. It now takes the
+            // tbl_people_schedules row id, same as schedules/edit, /archive, /delete.
+            Route::get('/rota/pdf/{id}', [SchedulesController::class, 'rotaPdf'])->name('rota.pdf');
+
+            // Weekly Rota Dashboard - company-wide, on-screen "who works
+            // when" board for the current week, plus its PDF export.
+            // NOTE: weekly.pdf was previously missing entirely even
+           Route::get('rota/weekly-dashboard', [SchedulesController::class, 'weeklyDashboard'])->name('rota.weekly.dashboard');
+Route::get('rota/weekly-pdf', [SchedulesController::class, 'weeklyRotaPdf'])->name('rota.weekly.pdf');
+            // Monthly Rota - calendar-grid view built from the same
+            // recurring weekly_shifts pattern as the weekly rota above.
+            Route::get('/monthly-rota', [SchedulesController::class, 'monthlyRota'])->name('monthly.rota');
+            Route::get('/monthly-rota/pdf', [SchedulesController::class, 'monthlyRotaPdf'])->name('monthly.rota.pdf');
 
             /*
             |--------------------------------------------------------------------------

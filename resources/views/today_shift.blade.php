@@ -35,6 +35,19 @@
     overflow: hidden;
 }
 
+.box-header-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 20px 0;
+}
+
+.box-header-toolbar select {
+    min-width: 200px;
+}
+
 /* ========== TABLE HOVER EFFECT ========== */
 #shiftTable tbody tr {
     transition: all 0.2s ease;
@@ -168,7 +181,21 @@ input:focus {
 
 <!-- ================= TABLE ================= -->
 <div class="row">
-    <div class="box box-success">
+    <div class="box box-success" style="width:100%;">
+        <div class="box-header-toolbar">
+            {{-- Company filter - same GET-based pattern used on
+                 /staff-rota and the weekly rota dashboard. --}}
+            <form method="GET" action="{{ url('today-shifts') }}" id="company-filter-form">
+                <select name="company_id" class="ui dropdown" onchange="document.getElementById('company-filter-form').submit()">
+                    @forelse($companies as $c)
+                        <option value="{{ $c->id }}" @selected($companyId == $c->id)>{{ $c->company }}</option>
+                    @empty
+                        <option value="">{{ __('No companies found') }}</option>
+                    @endforelse
+                </select>
+            </form>
+        </div>
+
         <div class="box-body">
 
             <table class="table table-striped table-hover" id="shiftTable">
@@ -188,24 +215,18 @@ input:focus {
                 <tbody>
 
                     {{--
-                        $nowTime and each $shift->isPresent are now
-                        computed once in SchedulesController::todayShifts()
-                        rather than here. Previously this partial recomputed
-                        "now" independently of the controller (a second,
-                        potentially different timezone/instant) and ran a
-                        fresh presence-lookup DB query for every single row
-                        (N+1 queries) even though the controller had already
-                        fetched $todayAttendance and never used it. Both are
-                        fixed by using the values the controller now passes
-                        down, so there's exactly one source of truth for
-                        "now" and one query for attendance, no matter how
-                        many rows are on this page.
+                        $nowTime and each $shift->isPresent are computed
+                        once in SchedulesController::todayShifts() rather
+                        than here, and $shift->is_off comes straight from
+                        weekly_shifts instead of being inferred from null
+                        times - so a row is unambiguously "off today"
+                        rather than a null-time guess.
                     --}}
 
                     @forelse($shifts as $index => $shift)
 
                         @php
-                            $isOff = is_null($shift->time_in) || is_null($shift->time_out);
+                            $isOff = (bool) $shift->is_off || is_null($shift->time_in) || is_null($shift->time_out);
                             $isRunning = (!$isOff && $nowTime >= $shift->time_in && $nowTime <= $shift->time_out);
                         @endphp
 
@@ -288,6 +309,8 @@ input:focus {
 
 <script>
 $(document).ready(function(){
+
+    $('.box-header-toolbar .ui.dropdown').dropdown();
 
     $('#shiftTable').DataTable({
         responsive: true,

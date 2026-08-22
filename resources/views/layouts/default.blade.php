@@ -526,23 +526,55 @@
                     </a>
                 </li>
 
-                <li class="">
-                    <a href="{{ url('schedules') }}">
+                {{--
+                    Rota & Schedules submenu - consolidates what were
+                    previously 5 separate top-level sidebar links
+                    (Schedules, Staff Rota, Today Shifts, plus the new
+                    Weekly and Monthly dashboards) into one collapsible
+                    group, the same pattern already used above for
+                    "Access Management". Keeping all 5 as flat top-level
+                    items would have made the sidebar noticeably longer
+                    for one feature area; this groups them the way the
+                    app already groups the "quick access" shortcuts.
+                --}}
+                <li class="sidebar-dropdown">
+                    <a href="#rotaSubmenu" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
                         <i class="ui icon calendar alternate outline"></i>
-                        <p>{{ __('Schedules') }}</p>
+                        <p>{{ __('Rota & Schedules') }}</p>
+                        <i class="ui icon chevron down sidebar-caret"></i>
                     </a>
-                </li>
-                <li class="">
-                    <a href="{{ url('staff-rota') }}">
-                        <i class="ui icon clipboard list"></i>
-                        <p>{{ __('Staff Rota') }}</p>
-                    </a>
-                </li>
-                <li class="">
-                    <a href="{{ url('today-shifts') }}">
-                        <i class="ui icon clock outline"></i>
-                        <p>{{ __('Today Shifts') }}</p>
-                    </a>
+                    <ul class="collapse list-unstyled sidebar-submenu" id="rotaSubmenu">
+                        <!-- <li>
+                            <a href="{{ url('schedules') }}">
+                                <i class="ui icon list"></i>
+                                <p>{{ __('Schedules') }}</p>
+                            </a>
+                        </li> -->
+                        <li>
+                            <a href="{{ url('staff-rota') }}">
+                                <i class="ui icon clipboard list"></i>
+                                <p>{{ __('Staff Rota') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url('today-shifts') }}">
+                                <i class="ui icon clock outline"></i>
+                                <p>{{ __('Today Shifts') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('rota.weekly.dashboard') }}">
+                                <i class="ui icon table"></i>
+                                <p>{{ __('Weekly Dashboard') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('monthly.rota') }}">
+                                <i class="ui icon calendar outline"></i>
+                                <p>{{ __('Monthly Dashboard') }}</p>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
                 <li class="">
@@ -820,20 +852,35 @@
     </script>
 
     {{--
-        Sidebar "Quick Access" collapse - keeps the toggle link's
-        aria-expanded attribute in sync (needed for the caret rotation
-        and highlight CSS) since this markup uses Bootstrap's collapse
-        plugin rather than Semantic UI here.
+        Sidebar submenu collapse - keeps each toggle link's aria-expanded
+        attribute in sync (needed for the caret rotation and highlight
+        CSS) since this markup uses Bootstrap's collapse plugin rather
+        than Semantic UI here.
+
+        GENERALIZED: previously this only bound show/hide handlers for
+        the one hardcoded #quickAccessSubmenu id, so adding a second
+        collapsible submenu (Rota & Schedules) would have needed another
+        near-duplicate block, and any *future* submenu would silently
+        miss this sync entirely unless someone remembered to copy it
+        again. Now it wires up every `.sidebar-submenu.collapse` element
+        found on the page by matching each one back to the toggle link
+        that points at its id, so any submenu added later gets the same
+        behavior automatically.
     --}}
     <script>
     $(document).ready(function () {
-        $('#quickAccessSubmenu')
-            .on('show.bs.collapse', function () {
-                $('a[href="#quickAccessSubmenu"]').attr('aria-expanded', 'true');
-            })
-            .on('hide.bs.collapse', function () {
-                $('a[href="#quickAccessSubmenu"]').attr('aria-expanded', 'false');
-            });
+        $('ul.sidebar-submenu.collapse').each(function () {
+            var $submenu = $(this);
+            var $toggle = $('a[href="#' + $submenu.attr('id') + '"]');
+
+            $submenu
+                .on('show.bs.collapse', function () {
+                    $toggle.attr('aria-expanded', 'true');
+                })
+                .on('hide.bs.collapse', function () {
+                    $toggle.attr('aria-expanded', 'false');
+                });
+        });
     });
     </script>
 

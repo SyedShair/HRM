@@ -216,7 +216,7 @@
     @endif
 
     <div class="employee-banner">
-        <img src="{{ $employee->avatar ? asset('storage/'.$employee->avatar) : asset('/assets/images/default.png') }}" alt="">
+        <img src="{{ $employee->avatar ? asset('storage/'.$employee->avatar) : asset('/assets/images/faces/default.png') }}" alt="">
         <div>
             <div class="name">{{ $employee->lastname }}, {{ $employee->firstname }}</div>
             <div class="meta">

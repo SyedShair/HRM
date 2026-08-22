@@ -97,7 +97,16 @@
         <tr>
             <td style="width: 90px;">
          @php
-    $imagePath = $i
+    // FIX: $i pointing at a filename doesn't guarantee that file still
+    // exists on disk (deleted, moved, or a legacy path saved without
+    // the "avatars/" prefix used by storeAvatarImage()). file_get_contents()
+    // on a missing path throws and crashes PDF generation entirely instead
+    // of just falling back to the default photo - so check existence on
+    // the actual disk first (the same disk the file was originally saved
+    // to), and only fall through to the default image when either $i is
+    // empty OR the file it points to is gone. Same fix as the on-screen
+    // profile-view.blade.php.
+    $imagePath = ($i && Storage::disk('public')->exists($i))
         ? Storage::disk('public')->path($i)
         : public_path('assets/images/faces/default_user.jpg');
 
