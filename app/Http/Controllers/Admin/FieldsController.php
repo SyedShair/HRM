@@ -203,6 +203,168 @@ class FieldsController extends Controller
       return redirect('fields/company')->with('success', trans("Company has been updated!"));
     }
 
+    /**
+     * GET /fields/company/{id}/documents
+     * Dedicated document management page for one company: full list,
+     * multi-upload, and per-document edit/delete - separate from the
+     * cramped inline lists on the Add/Edit Company forms.
+     */
+    public function documents($id)
+    {
+        if (permission::permitted('company')=='fail'){ return redirect()->route('denied'); }
+
+        $company = table::company()->where('id', $id)->first();
+
+        if (!$company) {
+            return redirect('fields/company')->with('error', trans('Company not found.'));
+        }
+
+        $documents = table::companydocuments()
+            ->where('company_id', $company->id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('admin.fields.company-documents', compact('company', 'documents'));
+    }
+
+    /**
+     * POST /fields/company/{id}/documents/add
+     * Add one or more documents to an existing company. Same repeatable
+     * label+file pattern as the Add/Edit Company forms, but scoped to a
+     * single dedicated page instead of being buried in the company form.
+     */
+    public function addDocuments(Request $request, $id)
+    {
+        if (permission::permitted('company-edit')=='fail'){ return redirect()->route('denied'); }
+
+        $company = table::company()->where('id', $id)->first();
+
+        if (!$company) {
+            return redirect('fields/company')->with('error', trans('Company not found.'));
+        }
+
+        $v = $request->validate([
+            'doc_label' => 'nullable|array',
+            'doc_label.*' => 'nullable|string|max:255',
+            'company_doc' => 'required|array|min:1',
+            'company_doc.*' => 'nullable|file|mimes:jpeg,jpg,png,pdf|max:4096',
+        ]);
+
+        $docStoredPaths = [];
+        try {
+            foreach ($request->file('company_doc', []) as $i => $docFile) {
+                $docStoredPaths[$i] = $this->storeCompanyDocument($docFile);
+            }
+        } catch (\RuntimeException $e) {
+            return redirect('fields/company/'.$company->id.'/documents')->with('error', trans($e->getMessage()));
+        }
+
+        $labels = $request->input('doc_label', []);
+        $docRows = [];
+
+        foreach ($docStoredPaths as $i => $path) {
+            if (!$path) {
+                continue;
+            }
+
+            $docRows[] = [
+                'company_id' => $company->id,
+                'doc_label'  => isset($labels[$i]) && trim((string) $labels[$i]) !== ''
+                    ? mb_strtoupper(trim((string) $labels[$i]))
+                    : 'DOCUMENT',
+                'doc_file'   => $path,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (empty($docRows)) {
+            return redirect('fields/company/'.$company->id.'/documents')->with('error', trans('No valid files were uploaded.'));
+        }
+
+        table::companydocuments()->insert($docRows);
+
+        $count = count($docRows);
+
+        return redirect('fields/company/'.$company->id.'/documents')->with(
+            'success',
+            trans_choice(':count document has been added!|:count documents have been added!', $count, ['count' => $count])
+        );
+    }
+
+    /**
+     * GET /fields/company/document/edit/{id}
+     * Returns one document's editable fields as JSON, used by the edit
+     * modal on the documents management page (label rename / file replace).
+     */
+    public function editDocument($id)
+    {
+        if (permission::permitted('company-edit')=='fail'){ return response()->json(['error' => trans('Access denied.')], 403); }
+
+        $doc = table::companydocuments()->where('id', $id)->first();
+
+        if (!$doc) {
+            return response()->json(['error' => trans('Document not found.')], 404);
+        }
+
+        return response()->json([
+            'id'         => $doc->id,
+            'doc_label'  => $doc->doc_label,
+            'file_url'   => asset('storage/'.$doc->doc_file),
+            'file_name'  => basename($doc->doc_file),
+        ]);
+    }
+
+    /**
+     * POST /fields/company/document/update
+     * Renames a document's label and/or replaces its file. The old file
+     * is only deleted after the DB update succeeds, and only if a new
+     * file was actually uploaded - never on a label-only rename.
+     */
+    public function updateDocument(Request $request)
+    {
+        if (permission::permitted('company-edit')=='fail'){ return redirect()->route('denied'); }
+
+        $v = $request->validate([
+            'id' => 'required|integer|exists:tbl_company_documents,id',
+            'doc_label' => 'required|string|max:255',
+            'company_doc' => 'nullable|file|mimes:jpeg,jpg,png,pdf|max:4096',
+        ]);
+
+        $doc = table::companydocuments()->where('id', $request->id)->first();
+
+        if (!$doc) {
+            return redirect('fields/company')->with('error', trans('Document not found.'));
+        }
+
+        $newPath = null;
+        try {
+            $newPath = $this->storeCompanyDocument($request->file('company_doc'));
+        } catch (\RuntimeException $e) {
+            return redirect('fields/company/'.$doc->company_id.'/documents')->with('error', trans($e->getMessage()));
+        }
+
+        $attributes = [
+            'doc_label' => mb_strtoupper(trim($request->doc_label)),
+            'updated_at' => now(),
+        ];
+
+        if ($newPath) {
+            $attributes['doc_file'] = $newPath;
+        }
+
+        table::companydocuments()->where('id', $doc->id)->update($attributes);
+
+        // Only remove the old file once the DB row has been safely updated
+        // to point at the new one, and only if a replacement was actually
+        // uploaded.
+        if ($newPath && $doc->doc_file && $doc->doc_file !== $newPath) {
+            Storage::disk('public')->delete($doc->doc_file);
+        }
+
+        return redirect('fields/company/'.$doc->company_id.'/documents')->with('success', trans('Document has been updated!'));
+    }
+
     public function deleteCompanyDocument($id, Request $request)
     {
       if (permission::permitted('company-delete')=='fail'){ return redirect()->route('denied'); }
@@ -210,10 +372,14 @@ class FieldsController extends Controller
       $doc = table::companydocuments()->where('id', $id)->first();
 
       if ($doc) {
+        $companyId = $doc->company_id;
+
         if ($doc->doc_file) {
           Storage::disk('public')->delete($doc->doc_file);
         }
         table::companydocuments()->where('id', $id)->delete();
+
+        return redirect('fields/company/'.$companyId.'/documents')->with('success', trans("Document deleted!"));
       }
 
       return redirect('fields/company')->with('success', trans("Document deleted!"));

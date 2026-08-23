@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\FieldsController;
 use App\Http\Controllers\Admin\ExportsController;
 use App\Http\Controllers\Admin\ImportsController;
+use App\Http\Controllers\Admin\EmailController;
 
 use App\Http\Controllers\Personal\PersonalDashboardController;
 use App\Http\Controllers\Personal\PersonalProfileController;
@@ -232,6 +233,13 @@ Route::group(['middleware' => 'auth'], function () {
             Route::get('schedules/delete/{id}', [SchedulesController::class, 'delete']);
             Route::get('schedules/archive/{id}', [SchedulesController::class, 'archive']);
 
+            // NEW: manual "send this rota by email" action - shown as a
+            // button on the Rota page next to Edit/Archive. The same
+            // send also happens automatically whenever add()/update()
+            // saves successfully; this just lets it be re-triggered on
+            // demand for a schedule that already exists.
+            Route::get('schedules/email/{id}', [SchedulesController::class, 'emailRota'])->name('rota.email');
+
             // FIX: these two routes called storeWeekly()/getWeekly() - a
             // separate "save the weekly shifts via AJAX after the fact"
             // step from an earlier version of this feature. The current
@@ -256,11 +264,26 @@ Route::group(['middleware' => 'auth'], function () {
             // when" board for the current week, plus its PDF export.
             // NOTE: weekly.pdf was previously missing entirely even
            Route::get('rota/weekly-dashboard', [SchedulesController::class, 'weeklyDashboard'])->name('rota.weekly.dashboard');
-Route::get('rota/weekly-pdf', [SchedulesController::class, 'weeklyRotaPdf'])->name('rota.weekly.pdf');
+           Route::get('rota/weekly-pdf', [SchedulesController::class, 'weeklyRotaPdf'])->name('rota.weekly.pdf');
             // Monthly Rota - calendar-grid view built from the same
             // recurring weekly_shifts pattern as the weekly rota above.
             Route::get('/monthly-rota', [SchedulesController::class, 'monthlyRota'])->name('monthly.rota');
             Route::get('/monthly-rota/pdf', [SchedulesController::class, 'monthlyRotaPdf'])->name('monthly.rota.pdf');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Email Center (NEW)
+            |--------------------------------------------------------------------------
+            | Passport/visa/share code expiry reminders (auto + manual)
+            | and general-purpose HR emails to employees. Automatic rota
+            | notifications live with the Schedules routes above
+            | (schedules/email/{id} + the auto-send inside add()/update()).
+            */
+            Route::get('emails', [EmailController::class, 'index'])->name('emails.index');
+            Route::post('emails/passport/{id}', [EmailController::class, 'sendPassportReminder'])->name('emails.passport');
+            Route::post('emails/visa/{id}', [EmailController::class, 'sendVisaReminder'])->name('emails.visa');
+            Route::post('emails/sharecode/{id}', [EmailController::class, 'sendShareCodeReminder'])->name('emails.sharecode');
+            Route::post('emails/custom', [EmailController::class, 'sendCustom'])->name('emails.custom');
 
             /*
             |--------------------------------------------------------------------------
@@ -358,6 +381,13 @@ Route::get('rota/weekly-pdf', [SchedulesController::class, 'weeklyRotaPdf'])->na
             Route::get('fields/company/document/delete/{id}', [FieldsController::class, 'deleteCompanyDocument']);
             Route::get('fields/company/edit/{id}', [FieldsController::class, 'editCompany']);
             Route::post('fields/company/update', [FieldsController::class, 'updateCompany']);
+
+
+            // Company Documents (full CRUD, dedicated page)
+Route::get('fields/company/{id}/documents', [FieldsController::class, 'documents'])->name('company.documents');
+Route::post('fields/company/{id}/documents/add', [FieldsController::class, 'addDocuments'])->name('company.documents.add');
+Route::get('fields/company/document/edit/{id}', [FieldsController::class, 'editDocument'])->name('company.document.edit');
+Route::post('fields/company/document/update', [FieldsController::class, 'updateDocument'])->name('company.document.update');
             // Department
             Route::get('fields/department', [FieldsController::class, 'department'])->name('department');
             Route::post('fields/department/add', [FieldsController::class, 'addDepartment']);
