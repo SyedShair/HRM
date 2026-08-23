@@ -39,23 +39,6 @@
         #add-doc-entry {
             margin-bottom: 16px;
         }
-        .company-doc-list {
-            margin: 0;
-            padding-left: 18px;
-            font-size: 12.5px;
-        }
-        .company-doc-list li {
-            margin-bottom: 4px;
-        }
-        .company-doc-list .doc-delete-link {
-            color: #dc2626;
-            margin-left: 6px;
-        }
-        .no-docs-label {
-            color: #9ca3af;
-            font-size: 12.5px;
-            font-style: italic;
-        }
     </style>
     @endsection
 
@@ -149,18 +132,9 @@
                                     <td>{{ $company->address }}</td>
                                     <td>
                                         @php $companyDocs = $documents[$company->id] ?? []; @endphp
-                                        @if(count($companyDocs) > 0)
-                                            <ul class="company-doc-list">
-                                                @foreach($companyDocs as $doc)
-                                                    <li>
-                                                        <a href="{{ asset('storage/'.$doc->doc_file) }}" target="_blank">{{ $doc->doc_label }}</a>
-                                                        <a href="{{ url('fields/company/document/delete/'.$doc->id) }}" class="doc-delete-link" title="{{ __('Delete this document') }}" onclick="return confirm('{{ __('Delete this document?') }}');"><i class="icon trash alternate outline"></i></a>
-                                                    </li>
-                                                @endforeach
-                                            </ul>
-                                        @else
-                                            <span class="no-docs-label">{{ __('No documents') }}</span>
-                                        @endif
+                                        <a href="{{ url('fields/company/'.$company->id.'/documents') }}" class="ui tiny basic button">
+                                            <i class="icon folder open outline"></i> {{ __('Manage') }} ({{ count($companyDocs) }})
+                                        </a>
                                     </td>
                                     <td class="align-right"> 
                                         <a href="{{ url('fields/company/edit/'.$company->id) }}" class="ui circular basic icon button tiny" title="{{ __('Edit') }}"><i class="icon pencil alternate"></i></a>
@@ -196,7 +170,7 @@
     }
 
     /* ================================================================
-       MULTIPLE COMPANY DOCUMENTS
+       MULTIPLE COMPANY DOCUMENTS (Add Company form)
        Repeatable label + file rows, same pattern as the employee
        address-history documents.
        ================================================================ */

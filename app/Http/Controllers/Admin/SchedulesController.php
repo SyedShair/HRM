@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use App\Classes\table;
 use App\Classes\permission;
+use App\Services\RotaMailer;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -161,16 +162,28 @@ class SchedulesController extends Controller
             ));
         }
 
+        $scheduleId = null;
+
         try {
-            DB::transaction(function () use ($request, $employee, $companyData, $weeklyHoursAllowed) {
-                $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed);
+            DB::transaction(function () use ($request, $employee, $companyData, $weeklyHoursAllowed, &$scheduleId) {
+                $scheduleId = $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed);
             });
         } catch (\Exception $e) {
             \Log::error('Failed to create schedule: '.$e->getMessage());
             return back()->withInput()->with('error', trans('Something went wrong while saving this schedule. Please try again.'));
         }
 
-        return redirect('staff-rota')->with('success', trans('Weekly schedule has been created!'));
+        // Auto-notify the employee by email once the schedule is safely
+        // saved. A failed/skipped send (e.g. no email on file) never
+        // undoes the save itself - it's just reflected in the message.
+        $mailResult = RotaMailer::send($scheduleId, auth()->id());
+
+        $message = trans('Weekly schedule has been created!');
+        $message .= $mailResult['sent']
+            ? ' '.trans('An email notification has been sent to the employee.')
+            : ' '.trans('Note: no email was sent —').' '.$mailResult['reason'];
+
+        return redirect('staff-rota')->with('success', $message);
     }
 
     /**
@@ -249,16 +262,27 @@ class SchedulesController extends Controller
             ));
         }
 
+        $scheduleId = null;
+
         try {
-            DB::transaction(function () use ($request, $employee, $companyData, $schedule, $weeklyHoursAllowed) {
-                $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed, $schedule);
+            DB::transaction(function () use ($request, $employee, $companyData, $schedule, $weeklyHoursAllowed, &$scheduleId) {
+                $scheduleId = $this->saveSchedule($request, $employee, $companyData, $weeklyHoursAllowed, $schedule);
             });
         } catch (\Exception $e) {
             \Log::error('Failed to update schedule #'.$request->id.': '.$e->getMessage());
             return back()->withInput()->with('error', trans('Something went wrong while updating this schedule. Please try again.'));
         }
 
-        return redirect('staff-rota')->with('success', trans('Weekly schedule has been updated!'));
+        // Same auto-notify behaviour as add() - the employee should hear
+        // about a changed schedule just as much as a brand new one.
+        $mailResult = RotaMailer::send($scheduleId, auth()->id());
+
+        $message = trans('Weekly schedule has been updated!');
+        $message .= $mailResult['sent']
+            ? ' '.trans('An email notification has been sent to the employee.')
+            : ' '.trans('Note: no email was sent —').' '.$mailResult['reason'];
+
+        return redirect('staff-rota')->with('success', $message);
     }
 
     /**
@@ -288,6 +312,26 @@ class SchedulesController extends Controller
         table::schedules()->where('id', $id)->delete();
 
         return redirect('staff-rota')->with('success', trans('Schedule has been deleted.'));
+    }
+
+    /**
+     * GET /schedules/email/{id}
+     * Manual "send this rota by email" action, shown as a button on the
+     * Rota page next to Edit/Archive. Reuses the exact same mailer as
+     * the automatic send-on-save in add()/update() above, just
+     * triggered on demand for a schedule that already exists.
+     */
+    public function emailRota($id)
+    {
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+
+        $result = RotaMailer::send((int) $id, auth()->id());
+
+        if ($result['sent']) {
+            return redirect('staff-rota')->with('success', trans('Schedule email sent to the employee.'));
+        }
+
+        return redirect('staff-rota')->with('error', $result['reason'] ?? trans('The email could not be sent.'));
     }
 
     /**
@@ -730,8 +774,11 @@ public function todayShifts(Request $request)
      * Writes the tbl_people_schedules summary row and its 7
      * weekly_shifts detail rows. hours = the weekly hours ALLOWED
      * figure the user entered (the contracted target), not a computed total.
+     *
+     * @return int the tbl_people_schedules.id that was written to (new
+     *             or existing), so callers can email the employee about it.
      */
-    private function saveSchedule(Request $request, $employee, $companyData, float $weeklyHoursAllowed, $existingSchedule = null)
+    private function saveSchedule(Request $request, $employee, $companyData, float $weeklyHoursAllowed, $existingSchedule = null): int
     {
         $isOff = $request->input('is_off', []);
         $timeIn = $request->input('time_in', []);
@@ -799,5 +846,7 @@ public function todayShifts(Request $request)
         }
 
         table::weeklyshifts()->insert($shiftRows);
+
+        return $scheduleId;
     }
 }

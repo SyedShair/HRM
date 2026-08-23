@@ -79,6 +79,10 @@
                 font-size: 14px;
             }
 
+            /* ================================================
+               SIDEBAR — container
+               ================================================ */
+
             #sidebar {
                 background: #ffffff;
                 border-right: 1px solid var(--borderColor);
@@ -89,19 +93,122 @@
                 border-bottom: 1px solid var(--borderColor);
             }
 
+            #sidebar ul.components {
+                padding: 14px 0 24px;
+            }
+
+            /* Custom slim scrollbar for the sidebar, since the list can
+               get long with all the submenus expanded. */
+            #sidebar {
+                scrollbar-width: thin;
+                scrollbar-color: #d7e1dc transparent;
+            }
+            #sidebar::-webkit-scrollbar {
+                width: 6px;
+            }
+            #sidebar::-webkit-scrollbar-thumb {
+                background: #d7e1dc;
+                border-radius: 10px;
+            }
+            #sidebar::-webkit-scrollbar-thumb:hover {
+                background: var(--primaryColor);
+            }
+
+            /* ================================================
+               SIDEBAR — nav items
+               ================================================ */
+
             #sidebar ul li a {
-                color: #64748b;
+                color: #33404a;
+            }
+
+            #sidebar ul.components > li {
+                margin: 3px 12px;
+            }
+
+            /* Idle state now gets its own light background + border so
+               each item reads as a distinct "button" sitting on the white
+               panel, instead of bare text that only appears on hover. */
+            #sidebar ul.components > li > a,
+            #sidebar ul.components > li.sidebar-dropdown > a {
+                display: flex;
+                align-items: center;
+                gap: 13px;
+                padding: 11px 14px;
+                border-radius: 12px;
+                font-weight: 500;
+                font-size: 14px;
+                letter-spacing: 0.01em;
+                background: #f7f9f8;
+                border: 1px solid #edf1ef;
+                transition: background var(--transition) ease, border-color var(--transition) ease, transform var(--transition) ease, box-shadow var(--transition) ease;
+                position: relative;
+            }
+
+            #sidebar ul.components > li > a p {
+                margin: 0;
+                line-height: 1.2;
+            }
+
+            /* Icon badge: every sidebar icon sits inside a small rounded
+               square with its own subtle background, instead of a bare
+               glyph floating next to the text - this is what makes the
+               list read as a set of "buttons" rather than a plain link
+               list. */
+            #sidebar ul.components > li > a i.ui.icon,
+            #sidebar ul.components > li.sidebar-dropdown > a i.ui.icon {
+                width: 32px;
+                height: 32px;
+                min-width: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 !important;
+                border-radius: 9px;
+                background: rgba(62, 91, 84, 0.14);
+                color: var(--secondaryColor) !important;
+                font-size: 15px !important;
+                transition: background var(--transition) ease, color var(--transition) ease, transform var(--transition) ease;
+            }
+
+            /* The little chevron caret on dropdown toggles isn't part of
+               the icon-badge system above - keep it plain and just let
+               it rotate (existing behavior). */
+            #sidebar ul.components > li.sidebar-dropdown > a i.sidebar-caret {
+                width: auto;
+                height: auto;
+                min-width: 0;
+                background: transparent !important;
+                color: #9aa5ad !important;
+                font-size: 11px !important;
             }
 
             #sidebar ul li a:hover,
             #sidebar ul li a:hover i {
                 color: var(--secondaryColor);
-                background: rgba(96,117,112,0.10);
             }
 
-            /* Active / expanded state must beat any inline or default icon
-               color so the highlighted item is actually legible on the
-               dark background. */
+            #sidebar ul.components > li > a:hover,
+            #sidebar ul.components > li.sidebar-dropdown > a:hover {
+                background: rgba(96, 117, 112, 0.16);
+                border-color: rgba(96, 117, 112, 0.35);
+                transform: translateX(3px);
+            }
+
+            #sidebar ul.components > li > a:hover i.ui.icon,
+            #sidebar ul.components > li.sidebar-dropdown > a:hover i.ui.icon {
+                background: var(--secondaryColor);
+                color: #fff !important;
+                transform: scale(1.06);
+            }
+
+            #sidebar ul li a i {
+                color: #64748b;
+            }
+
+            /* Active / expanded state - a filled gradient pill with a
+               soft shadow so the current section is unmistakable at a
+               glance, beating any inline or default icon color. */
             #sidebar ul li.active > a,
             #sidebar ul li.active > a i,
             #sidebar ul li.active > a p,
@@ -109,11 +216,22 @@
             a[aria-expanded="true"] i,
             a[aria-expanded="true"] .sidebar-caret {
                 color: #fff !important;
-                background: var(--secondaryColor);
             }
 
-            #sidebar ul li a i {
-                color: #64748b;
+            #sidebar ul li.active > a,
+            a[aria-expanded="true"] {
+                background: var(--gradientColor) !important;
+                box-shadow: 0 6px 16px rgba(62, 91, 84, 0.28);
+            }
+
+            #sidebar ul li.active > a i.ui.icon,
+            a[aria-expanded="true"] i.ui.icon {
+                background: rgba(255, 255, 255, 0.18) !important;
+                color: #fff !important;
+            }
+
+            a[aria-expanded="true"] .sidebar-caret {
+                color: #fff !important;
             }
 
             .navbar {
@@ -332,6 +450,24 @@
     max-height: 65px;
 }
 
+/* Collapsed rail: center the icon badges, hide the text label, and
+   drop the hover slide-over-to-the-right effect (nothing to slide
+   toward against a bare icon rail). */
+#sidebar.active ul.components > li > a,
+#sidebar.active ul.components > li.sidebar-dropdown > a {
+    justify-content: center;
+    padding: 11px 8px;
+}
+
+#sidebar.active ul.components > li > a p {
+    display: none;
+}
+
+#sidebar.active ul.components > li > a:hover,
+#sidebar.active ul.components > li.sidebar-dropdown > a:hover {
+    transform: none;
+}
+
 /* Tablet */
 @media (max-width: 768px) {
     #sidebar .sidebar-header {
@@ -393,30 +529,36 @@
             }
 
             ul.sidebar-submenu {
-                background: #f8f9fa;
-                margin: 0;
-                padding: 0;
+                background: #f8fafb;
+                margin: 4px 12px 6px;
+                padding: 4px 0;
                 list-style: none;
                 overflow: hidden;
+                border-radius: 10px;
+                border: 1px solid #eef2f0;
             }
 
             ul.sidebar-submenu li a {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 10px 0px 0px 10px !important;
+                gap: 10px;
+                padding: 9px 12px 9px 16px !important;
                 font-size: 13px;
                 color: #64748b;
                 text-decoration: none;
                 white-space: nowrap;
+                border-radius: 8px;
+                margin: 2px 6px;
+                transition: background var(--transition) ease, color var(--transition) ease;
             }
 
             ul.sidebar-submenu li a i {
-                font-size: 13px !important;
-                color: #64748b;
+                font-size: 12px !important;
+                color: #8b96a0;
                 margin: 0 !important;
                 flex: 0 0 16px;
                 text-align: center;
+                transition: color var(--transition) ease;
             }
 
             ul.sidebar-submenu li a p {
@@ -439,6 +581,158 @@
             #sidebar.active .sidebar-dropdown > a .sidebar-caret,
             #sidebar.active ul.sidebar-submenu {
                 display: none;
+            }
+        </style>
+
+        {{--
+            ================================================================
+            RESPONSIVE MOBILE SIDEBAR — off-canvas drawer
+            ================================================================
+            Everything above this point is untouched. This block is kept
+            deliberately separate (its own <style> tag, added last so it
+            wins on source order for equal-specificity rules) rather than
+            edited into the block above, so it's obvious what changed and
+            easy to remove/adjust independently later.
+
+            Design notes:
+            - Below 992px (Bootstrap's lg breakpoint, matching
+              .navbar-expand-lg already used on the top nav) the sidebar
+              becomes a fixed off-canvas drawer instead of a static column.
+            - It is opened/closed via a dedicated `body.mobile-nav-open`
+              class, controlled by its own JS block further down - this is
+              intentionally independent of whatever the existing
+              #slidesidebar click handler does to #sidebar/#body for the
+              desktop "collapse to icon rail" behavior, so the two never
+              have to know about each other. Whether or not that handler
+              also toggles `.active` on #sidebar at the same time, every
+              rule below re-asserts the full/expanded look for both
+              `#sidebar` and `#sidebar.active` alike - so the icon-rail
+              styling above simply can't show through on mobile.
+            - A backdrop dims and blocks the page behind the open drawer
+              and closes it on click, same as any standard off-canvas nav.
+            ================================================================
+        --}}
+        <style>
+            .navbar-toggler {
+                display: none;
+                border: 1px solid rgba(255,255,255,0.5);
+                border-radius: 8px;
+                padding: 6px 10px;
+                background: transparent;
+            }
+            .navbar-toggler .ui.icon {
+                color: #fff;
+                margin: 0 !important;
+                font-size: 16px !important;
+            }
+            .navbar-toggler:focus {
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(255,255,255,0.35);
+            }
+
+            #sidebar-backdrop {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(10, 6, 36, 0.45);
+                z-index: 1090;
+                opacity: 0;
+                transition: opacity .25s ease;
+            }
+            body.mobile-nav-open #sidebar-backdrop {
+                display: block;
+                opacity: 1;
+            }
+            body.mobile-nav-open {
+                overflow: hidden;
+            }
+
+            @media (max-width: 991.98px) {
+                .navbar-toggler {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                /* Sidebar becomes a fixed off-canvas drawer, hidden by
+                   default and slid in via body.mobile-nav-open. */
+                #sidebar {
+                    position: fixed !important;
+                    top: 0;
+                    left: 0;
+                    height: 100vh;
+                    width: 280px;
+                    max-width: 82vw;
+                    z-index: 1100;
+                    transform: translateX(-100%);
+                    transition: transform .3s ease;
+                    overflow-y: auto;
+                }
+
+                body.mobile-nav-open #sidebar {
+                    transform: translateX(0);
+                    box-shadow: 4px 0 24px rgba(0,0,0,0.18);
+                }
+
+                /* Neutralise the desktop icon-rail look at this
+                   breakpoint regardless of whether #sidebar also carries
+                   .active from the separate desktop toggle. */
+                #sidebar .sidebar-header,
+                #sidebar.active .sidebar-header {
+                    height: 85px;
+                    padding: 8px 10px;
+                }
+                #sidebar .sidebar-logo,
+                #sidebar.active .sidebar-logo {
+                    width: auto;
+                    max-width: 190px;
+                    max-height: 65px;
+                }
+                #sidebar ul.components > li > a,
+                #sidebar.active ul.components > li > a,
+                #sidebar ul.components > li.sidebar-dropdown > a,
+                #sidebar.active ul.components > li.sidebar-dropdown > a {
+                    justify-content: flex-start;
+                    padding: 11px 14px;
+                }
+                #sidebar ul.components > li > a p,
+                #sidebar.active ul.components > li > a p {
+                    display: block !important;
+                }
+                #sidebar.active .sidebar-dropdown > a .sidebar-caret {
+                    display: inline-block !important;
+                }
+                #sidebar.active ul.sidebar-submenu.show {
+                    display: block !important;
+                }
+
+                /* Content always takes the full width on mobile - no
+                   margin reserved for a sidebar that's now an overlay. */
+                #body,
+                #body.active {
+                    margin-left: 0 !important;
+                    width: 100% !important;
+                }
+
+                .container-fluid {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                }
+
+                .page-title {
+                    font-size: 19px;
+                }
+                .page-title .float-right {
+                    float: none !important;
+                    display: inline-block;
+                    margin-top: 8px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                #sidebar {
+                    width: 260px;
+                }
             }
         </style>
     </head>
@@ -597,8 +891,15 @@
                 </li>
              <li>
                <a href="{{ url('meetings') }}">
-    <i class="video icon"></i> {{ __('Meetings') }}
-</a>
+                   <i class="ui icon video"></i>
+                   <p>{{ __('Meetings') }}</p>
+               </a>
+             </li>
+             <li>
+                 <a href="{{ route('emails.index') }}">
+                     <i class="ui icon mail"></i>
+                     <p>{{ __('Emails') }}</p>
+                 </a>
              </li>
                 <li>
                     <a href="{{ url('payroll') }}">
@@ -628,9 +929,19 @@
             .chat-menu-link1 {
                 display:flex !important;
                 align-items:center !important;
-                gap:10px;
+                gap:13px;
                 width:100%;
                 text-decoration:none;
+                padding:11px 14px;
+                border-radius:12px;
+                font-weight:500;
+                font-size:14px;
+                transition: background 0.3s ease, transform 0.3s ease;
+            }
+
+            .chat-menu-link1:hover {
+                background: rgba(96,117,112,0.09);
+                transform: translateX(3px);
             }
 
             .chat-icon-wrapper1 {
@@ -638,17 +949,43 @@
                 display:flex;
                 align-items:center;
                 justify-content:center;
-                width:22px;
+                width:32px;
+                height:32px;
+                min-width:32px;
+                border-radius:9px;
+                background: rgba(96,117,112,0.08);
+                transition: background 0.3s ease, transform 0.3s ease;
+            }
+
+            .chat-menu-link1:hover .chat-icon-wrapper1 {
+                background: var(--secondaryColor);
+                transform: scale(1.06);
             }
 
             .chat-icon-wrapper1 i {
-                font-size:20px;
+                font-size:15px;
                 margin:0 !important;
+                color: var(--secondaryColor) !important;
+                transition: color 0.3s ease;
+            }
+
+            .chat-menu-link1:hover .chat-icon-wrapper1 i {
+                color:#fff !important;
             }
 
             .chat-text1 {
                 display:inline-block;
-                line-height:1;
+                line-height:1.2;
+                color:#55606b;
+            }
+
+            #sidebar.active .chat-text1 {
+                display:none;
+            }
+
+            #sidebar.active .chat-menu-link1 {
+                justify-content:center;
+                padding:11px 8px;
             }
 
             .chat-badge1 {
@@ -741,6 +1078,20 @@
 
                     <button type="button" id="slidesidebar" class="ui icon button btn-light-outline" style="color: #fff !important; box-shadow: 0 0 0 1px rgba(255,255,255,0.5) inset !important;">
                         <i class="ui icon bars" style="color: #fff;"></i> <span class="toggle-sidebar-menu" style="color: #fff;">{{ __('Menu') }}</span>
+                    </button>
+
+                    {{--
+                        Navbar toggler for the top-right nav (Chat /
+                        Language / Quick Access / User menu). Bootstrap's
+                        .navbar-collapse is hidden below the lg breakpoint
+                        unless something adds the .show class to it -
+                        previously nothing did, so this whole menu was
+                        unreachable on tablet/mobile. Bootstrap's own JS
+                        (already loaded) wires this up automatically via
+                        the data-toggle/data-target attributes.
+                    --}}
+                    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                        <i class="ui icon ellipsis vertical"></i>
                     </button>
 
                     <div class="collapse navbar-collapse" id="navbarSupportedContent">
@@ -882,6 +1233,69 @@
                 .on('hide.bs.collapse', function () {
                     $toggle.attr('aria-expanded', 'false');
                 });
+        });
+    });
+    </script>
+
+    {{--
+        RESPONSIVE MOBILE SIDEBAR — drawer open/close behavior.
+
+        Deliberately independent of whatever #slidesidebar already does
+        for the desktop icon-rail collapse (that logic lives in
+        script.js, untouched here). This just layers a second, unrelated
+        behavior on the same button: below the lg breakpoint, clicking it
+        toggles `body.mobile-nav-open` instead, which the CSS above uses
+        to slide #sidebar in/out as an overlay with a backdrop. If the
+        existing handler also toggles #sidebar/#body .active at the same
+        time, that's harmless - the mobile media query above forces the
+        expanded look regardless of .active at this width.
+    --}}
+    <script>
+    $(document).ready(function () {
+        if ($('#sidebar-backdrop').length === 0) {
+            $('<div id="sidebar-backdrop"></div>').appendTo('body');
+        }
+
+        function isMobileWidth() {
+            return window.innerWidth < 992;
+        }
+
+        function closeMobileDrawer() {
+            $('body').removeClass('mobile-nav-open');
+        }
+
+        function toggleMobileDrawer() {
+            $('body').toggleClass('mobile-nav-open');
+        }
+
+        $('#slidesidebar').on('click', function () {
+            if (isMobileWidth()) {
+                toggleMobileDrawer();
+            }
+        });
+
+        $(document).on('click', '#sidebar-backdrop', function () {
+            closeMobileDrawer();
+        });
+
+        // Close the drawer after navigating - but not for the submenu
+        // toggle links themselves, which only expand/collapse in place.
+        $(document).on('click', '#sidebar ul.components > li > a:not(.dropdown-toggle)', function () {
+            if (isMobileWidth()) {
+                closeMobileDrawer();
+            }
+        });
+
+        $(document).on('keyup', function (e) {
+            if (e.key === 'Escape') {
+                closeMobileDrawer();
+            }
+        });
+
+        $(window).on('resize', function () {
+            if (!isMobileWidth()) {
+                closeMobileDrawer();
+            }
         });
     });
     </script>

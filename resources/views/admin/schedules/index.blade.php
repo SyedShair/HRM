@@ -378,6 +378,14 @@
                                         <a href="{{ url('schedules/edit/'.$shown->id) }}" class="ui button small basic">
                                             <i class="ui edit icon"></i>{{ __('Edit') }}
                                         </a>
+                                        {{-- Manual "send this rota by email" - the same send also
+                                             happens automatically the moment a schedule is created or
+                                             updated (see SchedulesController::add()/update()); this
+                                             just lets HR re-trigger it on demand, e.g. if the employee
+                                             says they never received it. --}}
+                                        <a href="{{ route('rota.email', $shown->id) }}" class="ui button small basic" onclick="return confirm('{{ __('Send this schedule by email to the employee?') }}');">
+                                            <i class="ui mail icon"></i>{{ __('Email') }}
+                                        </a>
                                         <a href="{{ url('schedules/archive/'.$shown->id) }}" class="ui button small basic" onclick="return confirm('{{ __('Archive this schedule?') }}');">
                                             <i class="ui archive icon"></i>{{ __('Archive') }}
                                         </a>

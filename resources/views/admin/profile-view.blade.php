@@ -33,8 +33,15 @@ if (!empty($c->visaend)) {
         $visaText = __('Expired');
     } else {
         $visaMonths = (int) $today->diffInMonths($visaEnd);
+        $visaDaysTotal = (int) $today->diffInDays($visaEnd);
         $visaDays = $today->copy()->addMonths($visaMonths)->diffInDays($visaEnd);
-        $visaClass = $visaMonths <= 3 ? 'bg-warning' : 'bg-success';
+        // FIX: aligned with the Email Center / auto-reminder milestones
+        // (5 months, 20 days) - this page previously used its own
+        // independent <=3-month threshold with no danger tier at all, so
+        // the same document could show "fine" here while the Email
+        // Center already flagged it "renew soon" or "urgent" for the
+        // exact same date.
+        $visaClass = $visaMonths <= 5 ? ($visaDaysTotal <= 20 ? 'bg-danger' : 'bg-warning') : 'bg-success';
         $visaText = $visaMonths . ' ' . __('months') . ' ' . $visaDays . ' ' . __('days remaining');
     }
 }
@@ -51,8 +58,12 @@ if (!empty($p->idexpirydate)) {
         $passportText = __('Expired');
     } else {
         $passportMonths = (int) $today->diffInMonths($expiry);
+        $passportDaysTotal = (int) $today->diffInDays($expiry);
         $passportDays = $today->copy()->addMonths($passportMonths)->diffInDays($expiry);
-        $passportClass = $passportMonths <= 3 ? 'bg-warning' : 'bg-success';
+        // FIX: same alignment as the visa block above - matches the
+        // Email Center's passport reminder thresholds instead of an
+        // independent <=3-month-only rule.
+        $passportClass = $passportMonths <= 5 ? ($passportDaysTotal <= 20 ? 'bg-danger' : 'bg-warning') : 'bg-success';
         $passportText = $passportMonths . ' ' . __('months') . ' ' . $passportDays . ' ' . __('days left');
     }
 }
