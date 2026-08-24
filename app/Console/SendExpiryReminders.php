@@ -13,26 +13,37 @@ class SendExpiryReminders extends Command
 {
     protected $signature = 'emails:send-expiry-reminders';
 
-    protected $description = 'Send automatic passport, visa, and share code expiry reminder emails at their configured milestones.';
+    protected $description = 'Send automatic daily passport, visa, and share code expiry reminder emails when 2 months or less remain.';
 
-    // Long-lead heads-up, shared by every document type. Matches the
-    // colour-coding windows already used on the employee profile page.
-    private const MONTHS_MILESTONE = 5;
+    /**
+     * Start sending daily reminders when this many months remain.
+     */
+    private const DAILY_REMINDER_MONTHS = 2;
 
     public function handle(): int
     {
-        $appSettings = table::settings()->where('id', 1)->first();
-        $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+        $appSettings = table::settings()
+            ->where('id', 1)
+            ->first();
+
+        $appName = !empty($appSettings->app_name)
+            ? $appSettings->app_name
+            : 'Company';
 
         $today = Carbon::now()->startOfDay();
+
         $sent = 0;
 
-        // ---- Passport ----
-        // Confirmed field mapping: tbl_people.nationalid holds the
-        // passport NUMBER (display-only, not used for the countdown);
-        // tbl_people.idexpirydate is the passport's own expiry date and
-        // is what drives this reminder. idissuedate (the passport's
-        // issue date) is informational only and never used here.
+        /*
+        |--------------------------------------------------------------------------
+        | Passport
+        |--------------------------------------------------------------------------
+        |
+        | nationalid = passport number
+        | idexpirydate = passport expiry date
+        |
+        */
+
         $people = table::people()
             ->where('employmentstatus', 'Active')
             ->whereNotNull('idexpirydate')
@@ -40,47 +51,69 @@ class SendExpiryReminders extends Command
 
         foreach ($people as $person) {
             $sent += $this->checkAndSend(
-                $person->id,
-                'passport_expiry',
-                'Passport',
-                $person->nationalid,
-                $person->idexpirydate,
-                $person->emailaddress,
-                mb_strtoupper($person->lastname.', '.$person->firstname),
-                $appName,
-                $today
+                reference: $person->id,
+                type: 'passport_expiry',
+                label: 'Passport',
+                documentNumber: $person->nationalid,
+                expiryDate: $person->idexpirydate,
+                email: $person->emailaddress,
+                employeeName: mb_strtoupper(
+                    $person->lastname . ', ' . $person->firstname
+                ),
+                appName: $appName,
+                today: $today
             );
         }
 
-        // ---- Visa ----
+        /*
+        |--------------------------------------------------------------------------
+        | Visa
+        |--------------------------------------------------------------------------
+        */
+
         $companyRows = table::companydata()
-            ->join('tbl_people', 'tbl_people.id', '=', 'tbl_company_data.reference')
+            ->join(
+                'tbl_people',
+                'tbl_people.id',
+                '=',
+                'tbl_company_data.reference'
+            )
             ->where('tbl_people.employmentstatus', 'Active')
             ->whereNotNull('tbl_company_data.visaend')
             ->get([
-                'tbl_company_data.reference', 'tbl_company_data.visaend',
-                'tbl_people.firstname', 'tbl_people.lastname', 'tbl_people.emailaddress',
+                'tbl_company_data.reference',
+                'tbl_company_data.visaend',
+                'tbl_people.firstname',
+                'tbl_people.lastname',
+                'tbl_people.emailaddress',
             ]);
 
         foreach ($companyRows as $row) {
             $sent += $this->checkAndSend(
-                $row->reference,
-                'visa_expiry',
-                'Visa',
-                null,
-                $row->visaend,
-                $row->emailaddress,
-                mb_strtoupper($row->lastname.', '.$row->firstname),
-                $appName,
-                $today
+                reference: $row->reference,
+                type: 'visa_expiry',
+                label: 'Visa',
+                documentNumber: null,
+                expiryDate: $row->visaend,
+                email: $row->emailaddress,
+                employeeName: mb_strtoupper(
+                    $row->lastname . ', ' . $row->firstname
+                ),
+                appName: $appName,
+                today: $today
             );
         }
 
-        // ---- Share Code ----
-        // tbl_people.sharecode is the code itself (display-only);
-        // tbl_people.sharecode_expires_at drives the countdown. Optional
-        // per employee (not everyone has one), so both must actually be
-        // present on the record for this to fire at all.
+        /*
+        |--------------------------------------------------------------------------
+        | Share Code
+        |--------------------------------------------------------------------------
+        |
+        | sharecode = actual share code
+        | sharecode_expires_at = expiry date
+        |
+        */
+
         $shareCodePeople = table::people()
             ->where('employmentstatus', 'Active')
             ->whereNotNull('sharecode')
@@ -89,32 +122,36 @@ class SendExpiryReminders extends Command
 
         foreach ($shareCodePeople as $person) {
             $sent += $this->checkAndSend(
-                $person->id,
-                'sharecode_expiry',
-                'Share Code',
-                $person->sharecode,
-                $person->sharecode_expires_at,
-                $person->emailaddress,
-                mb_strtoupper($person->lastname.', '.$person->firstname),
-                $appName,
-                $today
+                reference: $person->id,
+                type: 'sharecode_expiry',
+                label: 'Share Code',
+                documentNumber: $person->sharecode,
+                expiryDate: $person->sharecode_expires_at,
+                email: $person->emailaddress,
+                employeeName: mb_strtoupper(
+                    $person->lastname . ', ' . $person->firstname
+                ),
+                appName: $appName,
+                today: $today
             );
         }
 
-        $this->info("Sent {$sent} expiry reminder email(s).");
+        $this->info(
+            "Sent {$sent} expiry reminder email(s)."
+        );
 
         return self::SUCCESS;
     }
 
     /**
-     * Day-based milestones per document type, checked smallest-first so
-     * the closest/most urgent matching threshold wins. Share codes get
-     * an extra tight 6-day checkpoint on top of the standard 20-day one
-     * - they tend to have much shorter validity windows than a passport
-     * or visa, so a 20-day-out reminder alone isn't urgent enough right
-     * before one actually lapses.
+     * Urgent day-based milestones.
      *
-     * @return int[] ascending day thresholds
+     * Passport and Visa:
+     * - 20 days
+     *
+     * Share Code:
+     * - 20 days
+     * - 6 days
      */
     private function dayMilestonesFor(string $type): array
     {
@@ -125,6 +162,47 @@ class SendExpiryReminders extends Command
         return [20];
     }
 
+    /**
+     * Format remaining duration for display in the email.
+     *
+     * Example:
+     * 2 months 15 days
+     * 1 year 3 months 2 days
+     */
+    private function formatDuration(
+        Carbon $today,
+        Carbon $expiry
+    ): string {
+        $today = $today->copy()->startOfDay();
+        $expiry = $expiry->copy()->startOfDay();
+
+        $diff = $today->diff($expiry);
+
+        $parts = [];
+
+        if ($diff->y > 0) {
+            $parts[] = $diff->y . ' ' .
+                ($diff->y === 1 ? 'year' : 'years');
+        }
+
+        if ($diff->m > 0) {
+            $parts[] = $diff->m . ' ' .
+                ($diff->m === 1 ? 'month' : 'months');
+        }
+
+        if ($diff->d > 0 || empty($parts)) {
+            $parts[] = $diff->d . ' ' .
+                ($diff->d === 1 ? 'day' : 'days');
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Check expiry and send reminder.
+     *
+     * Daily reminders begin when 2 calendar months or less remain.
+     */
     private function checkAndSend(
         int $reference,
         string $type,
@@ -136,69 +214,164 @@ class SendExpiryReminders extends Command
         string $appName,
         Carbon $today
     ): int {
+        /*
+        |--------------------------------------------------------------------------
+        | Required data check
+        |--------------------------------------------------------------------------
+        */
+
         if (empty($expiryDate) || empty($email)) {
             return 0;
         }
 
         $expiry = Carbon::parse($expiryDate)->startOfDay();
 
-        // Already expired - not this command's concern; the person
-        // should already have had reminders on the way in, and an
-        // "already expired" notice is a different kind of message.
+        /*
+        |--------------------------------------------------------------------------
+        | Ignore already expired documents
+        |--------------------------------------------------------------------------
+        */
+
         if ($expiry->lt($today)) {
             return 0;
         }
 
-        $daysRemaining = $today->diffInDays($expiry);
-        $monthsRemaining = $today->diffInMonths($expiry);
+        /*
+        |--------------------------------------------------------------------------
+        | Calculate remaining time
+        |--------------------------------------------------------------------------
+        */
 
-        // Check the tightest (nearest-to-expiry) day threshold first,
-        // so e.g. a share code within 6 days gets its own '6_days'
-        // milestone rather than only ever re-matching '20_days' (which
-        // would already have been sent and logged earlier, so it'd be
-        // silently skipped as a duplicate below).
+        $daysRemaining = $today->diffInDays($expiry);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Check whether expiry is within 2 calendar months
+        |--------------------------------------------------------------------------
+        |
+        | Using calendar months instead of only diffInMonths().
+        |
+        | Example:
+        | Today: 24 August
+        | Expiry: 24 October
+        | Result: daily reminder starts.
+        |
+        */
+
+        $dailyReminderStart = $expiry
+            ->copy()
+            ->subMonthsNoOverflow(self::DAILY_REMINDER_MONTHS);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Determine milestone
+        |--------------------------------------------------------------------------
+        |
+        | Default:
+        | - daily_2_months
+        |
+        | Urgent milestones override the daily milestone:
+        | - 20_days
+        | - 6_days for Share Code
+        |
+        */
+
         $milestone = null;
+
+        // Send daily when 2 months or less remain.
+        if ($today->gte($dailyReminderStart)) {
+            $milestone = 'daily_2_months';
+        }
+
+        // Check urgent milestones.
         foreach ($this->dayMilestonesFor($type) as $dayThreshold) {
             if ($daysRemaining <= $dayThreshold) {
-                $milestone = $dayThreshold.'_days';
+                $milestone = $dayThreshold . '_days';
                 break;
             }
         }
 
-        if ($milestone === null && $monthsRemaining <= self::MONTHS_MILESTONE) {
-            $milestone = self::MONTHS_MILESTONE.'_months';
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | Nothing to send yet
+        |--------------------------------------------------------------------------
+        */
 
         if ($milestone === null) {
             return 0;
         }
 
-        // Already sent this exact milestone for this exact expiry date?
-        // Keyed on document_date too, so a renewed document (new expiry
-        // date) starts a fresh reminder cycle instead of being silenced
-        // forever by an old log row.
-        $alreadySent = DB::table('email_logs')
+        /*
+        |--------------------------------------------------------------------------
+        | Prevent duplicate emails on the same day
+        |--------------------------------------------------------------------------
+        |
+        | Same:
+        | - employee
+        | - document type
+        | - milestone
+        | - expiry date
+        | - day
+        |
+        | Tomorrow it can send again.
+        |
+        */
+
+        $alreadySentToday = DB::table('email_logs')
             ->where('reference', $reference)
             ->where('type', $type)
             ->where('milestone', $milestone)
-            ->where('document_date', $expiry->format('Y-m-d'))
+            ->where(
+                'document_date',
+                $expiry->format('Y-m-d')
+            )
+            ->whereDate(
+                'created_at',
+                $today->format('Y-m-d')
+            )
+            ->where('status', 'sent')
             ->exists();
 
-        if ($alreadySent) {
+        if ($alreadySentToday) {
             return 0;
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Email details
+        |--------------------------------------------------------------------------
+        */
+
         $subject = "{$label} Expiry Reminder - {$appName}";
 
+        $durationText = $this->formatDuration(
+            $today,
+            $expiry
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Send email
+        |--------------------------------------------------------------------------
+        */
+
         try {
-            Mail::to($email)->send(new DocumentExpiryReminderMail(
-                $employeeName,
-                $label,
-                $documentNumber,
-                $expiry->format('d F Y'),
-                $daysRemaining,
-                $appName
-            ));
+            Mail::to($email)->send(
+                new DocumentExpiryReminderMail(
+                    $employeeName,
+                    $label,
+                    $documentNumber,
+                    $expiry->format('d F Y'),
+                    $durationText,
+                    $appName
+                )
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Log successful email
+            |--------------------------------------------------------------------------
+            */
 
             DB::table('email_logs')->insert([
                 'reference' => $reference,
@@ -215,8 +388,19 @@ class SendExpiryReminders extends Command
             ]);
 
             return 1;
+
         } catch (\Exception $e) {
-            \Log::error("Failed to send {$type} reminder for reference {$reference}: ".$e->getMessage());
+
+            /*
+            |--------------------------------------------------------------------------
+            | Log error
+            |--------------------------------------------------------------------------
+            */
+
+            \Log::error(
+                "Failed to send {$type} reminder for reference {$reference}: "
+                . $e->getMessage()
+            );
 
             DB::table('email_logs')->insert([
                 'reference' => $reference,
