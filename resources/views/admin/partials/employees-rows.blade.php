@@ -56,9 +56,28 @@
                 $sharecodeExpiry = null;
             }
         }
+
+        /*
+        |------------------------------------------------------------
+        | Row blink
+        |------------------------------------------------------------
+        |
+        | Previously only tied to the visa's 90-day window (amber AND
+        | red both blinked). Now scoped to exactly what shows a RED
+        | badge in any of the three columns below - visa, passport, or
+        | share code - matching the same "red" cutoffs the badges
+        | themselves use (<=3 months for visa/passport, <=14 days for
+        | share code), plus any already-expired document.
+        |
+        */
+        $visaRed = $end && ($expired || ($months !== null && $months <= 3));
+        $passportRed = $passportExpiry && ($passportExpired || ($passportMonths !== null && $passportMonths <= 3));
+        $sharecodeRed = $sharecodeExpiry && ($sharecodeExpired || ($sharecodeDaysLeft !== null && $sharecodeDaysLeft <= 14));
+
+        $hasRedBadge = $visaRed || $passportRed || $sharecodeRed;
     @endphp
 
-    <tr class="{{ ($diffDays !== null && $diffDays <= 90 && $diffDays > 0) ? 'expiring-row' : '' }}">
+    <tr class="{{ $hasRedBadge ? 'expiring-row' : '' }}">
 
         <td>{{ $employee->idno }}</td>
         <td>{{ $employee->lastname }}, {{ $employee->firstname }}</td>
@@ -66,87 +85,88 @@
         <td>{{ $employee->department }}</td>
         <td>{{ $employee->jobposition }}</td>
 
+        {{--
+            SHARE CODE
+            The code itself is hidden by default behind the eye toggle;
+            the days-remaining / expired badge is always visible so the
+            column stays useful at a glance without exposing the code.
+        --}}
         <td>
             @if(empty($employee->sharecode))
 
-                {{-- NO SHARE CODE --}}
                 <span class="ui grey label">
                     No Share Code
                 </span>
 
-            @elseif(!$sharecodeExpiry)
+            @else
 
-                {{-- SHARE CODE EXISTS BUT NO EXPIRY DATE --}}
-                <div>
-                    <strong>{{ $employee->sharecode }}</strong>
+                <div class="secret-row">
+                    <span class="secret-value">{{ $employee->sharecode }}</span>
+                    <a href="javascript:void(0)" class="toggle-secret" title="Show / hide share code">
+                        <i class="eye icon"></i>
+                    </a>
                 </div>
 
-                <div style="margin-top: 5px;">
+                @if(!$sharecodeExpiry)
+
                     <span class="ui orange label">
                         Expiry Not Set
                     </span>
-                </div>
 
-            @elseif($sharecodeExpired)
+                @elseif($sharecodeExpired)
 
-                {{-- EXPIRED --}}
-                <div>
                     <span class="ui red label">
                         Share Code Expired
                     </span>
-                </div>
 
-            @else
+                @else
 
-                {{-- VALID SHARE CODE --}}
-                <div>
-                    <strong>{{ $employee->sharecode }}</strong>
-                </div>
+                    <span class="ui {{ $sharecodeDaysLeft > 30 ? 'green' : ($sharecodeDaysLeft > 14 ? 'yellow' : 'red') }} label">
+                        {{ $sharecodeDaysLeft }} days left
+                    </span>
 
-                <div style="margin-top: 5px;">
+                    <div style="font-size: 11px; color: #777; margin-top: 3px;">
+                        Expires {{ $sharecodeExpiry->format('d M Y') }}
+                    </div>
 
-                    @if($sharecodeDaysLeft > 30)
-
-                        <span class="ui green label">
-                            {{ $sharecodeDaysLeft }} days left
-                        </span>
-
-                    @elseif($sharecodeDaysLeft > 14)
-
-                        <span class="ui yellow label">
-                            {{ $sharecodeDaysLeft }} days left
-                        </span>
-
-                    @else
-
-                        <span class="ui red label">
-                            {{ $sharecodeDaysLeft }} days left
-                        </span>
-
-                    @endif
-
-                </div>
-
-                {{-- SAFE: only executed when $sharecodeExpiry exists --}}
-                <div style="font-size: 11px; color: #777; margin-top: 3px;">
-                    Expires {{ $sharecodeExpiry->format('d M Y') }}
-                </div>
+                @endif
 
             @endif
         </td>
 
-        <!-- PASSPORT (nationalid) + expiry countdown -->
+        {{--
+            PASSPORT (nationalid)
+            Same pattern - number hidden behind the eye toggle, months/days
+            remaining always shown.
+        --}}
         <td>
-            <div class="visa-expiry-date">{{ $employee->nationalid ?? '—' }}</div>
+            @if(!empty($employee->nationalid))
+
+                <div class="secret-row">
+                    <span class="secret-value">{{ $employee->nationalid }}</span>
+                    <a href="javascript:void(0)" class="toggle-secret" title="Show / hide passport number">
+                        <i class="eye icon"></i>
+                    </a>
+                </div>
+
+            @else
+
+                <div class="secret-row">
+                    <span class="cell-muted">—</span>
+                </div>
+
+            @endif
 
             @if($passportExpiry)
                 @if($passportExpired)
-                    <span class="ui red label">Expired</span>
+                    <span class="ui red label">Passport Expired</span>
                 @else
                     <span class="ui {{ $passportMonths > 6 ? 'green' : ($passportMonths > 3 ? 'yellow' : 'red') }} label">
                         {{ $passportMonths }} months {{ $passportDays }} days left
                     </span>
                 @endif
+            @else
+                <span class="ui grey label">No Expiry Set</span>
             @endif
         </td>
 
