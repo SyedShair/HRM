@@ -90,29 +90,31 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach($requiredDocuments ?? [] as $req)
-                                <tr>
-                                    <td>
-                                        {{ $req['label'] }}
-                                        @if(!$req['required'])
-                                            <div class="required-badge">Conditional — not always required</div>
-                                        @endif
-                                    </td>
-                                    <td>
-                                        @if($req['found'])
-                                            <span class="ui green label"><i class="check icon"></i> On File</span>
-                                        @elseif($req['required'])
-                                            <span class="ui red label"><i class="times icon"></i> Missing</span>
-                                        @else
-                                            <span class="ui grey label">Not Provided</span>
-                                        @endif
-                                    </td>
-                                    <td style="font-size:12px; color:#6b7280;">
-                                        {{ $req['source'] === 'profile' ? 'Profile field' : 'Uploaded document' }}
-                                    </td>
-                                    <td>{{ $req['matched_file'] ?? '—' }}</td>
-                                </tr>
-                            @endforeach
+                           @foreach($requiredDocuments ?? [] as $req)
+    @continue(!$req['required'])
+
+    <tr>
+        <td>{{ $req['label'] }}</td>
+
+        <td>
+            @if($req['found'])
+                <span class="ui green label">
+                    <i class="check icon"></i> On File
+                </span>
+            @else
+                <span class="ui red label">
+                    <i class="times icon"></i> Missing
+                </span>
+            @endif
+        </td>
+
+        <td style="font-size:12px; color:#6b7280;">
+            {{ $req['source'] === 'profile' ? 'Profile field' : 'Uploaded document' }}
+        </td>
+
+        <td>{{ $req['matched_file'] ?? '—' }}</td>
+    </tr>
+@endforeach
                         </tbody>
                     </table>
 

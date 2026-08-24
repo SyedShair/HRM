@@ -734,6 +734,28 @@
                     width: 260px;
                 }
             }
+            /* Kill Bootstrap's auto-generated caret so only our own
+   chevron icon renders — having class="dropdown-toggle" was
+   triggering Bootstrap's built-in ::after arrow *in addition*
+   to the manual <i class="sidebar-caret"> icon, which is what
+   was causing the doubled/overlapping arrows. */
+#sidebar .sidebar-dropdown > a.dropdown-toggle::after {
+    display: none !important;
+    content: none !important;
+    border: none !important;
+    margin: 0 !important;
+}
+
+/* Defensive: make the label truncate cleanly instead of ever
+   being able to visually collide with the caret again,
+   regardless of label length or sidebar width. */
+#sidebar ul.components > li > a p {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+  
+    text-overflow: ellipsis;
+}
         </style>
     </head>
     <body>
@@ -764,7 +786,6 @@
                     <a href="#quickAccessSubmenu" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
                         <i class="ui icon linkify"></i>
                         <p>{{ __('Access Management') }}</p>
-                        <i class="ui icon chevron down sidebar-caret"></i>
                     </a>
                     <ul class="collapse list-unstyled sidebar-submenu" id="quickAccessSubmenu">
                         
@@ -819,7 +840,7 @@
                         <p>{{ __('Attendances') }}</p>
                     </a>
                 </li>
-
+             </li>
                 {{--
                     Rota & Schedules submenu - consolidates what were
                     previously 5 separate top-level sidebar links
@@ -835,7 +856,6 @@
                     <a href="#rotaSubmenu" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
                         <i class="ui icon calendar alternate outline"></i>
                         <p>{{ __('Rota & Schedules') }}</p>
-                        <i class="ui icon chevron down sidebar-caret"></i>
                     </a>
                     <ul class="collapse list-unstyled sidebar-submenu" id="rotaSubmenu">
                         <!-- <li>
