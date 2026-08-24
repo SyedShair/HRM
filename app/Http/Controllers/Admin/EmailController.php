@@ -10,231 +10,687 @@ use App\Mail\DocumentExpiryReminderMail;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class EmailController extends Controller
 {
-    // Same lead-time windows as the automatic scheduler, used here only
-    // to colour-code the lists - manual sends below always fire
-    // immediately regardless of these windows.
+    /*
+    |--------------------------------------------------------------------------
+    | Expiry Settings
+    |--------------------------------------------------------------------------
+    |
+    | These values control the colour/status shown in the Email Center.
+    |
+    | Passport / Visa:
+    |   - Within 5 months = warning/danger
+    |   - 20 days or less = danger
+    |
+    | Share Code:
+    |   - Within 5 months = warning/danger
+    |   - 6 days or less = danger
+    |
+    */
+
     private const MONTHS_MILESTONE = 5;
     private const DAYS_MILESTONE = 20;
 
     /**
-     * GET /emails - Email Center: passport, visa, and share code expiry
-     * lists (with manual send buttons) plus a compose form for custom
-     * HR emails.
+     * GET /emails
+     *
+     * Email Center:
+     * - Passport expiry
+     * - Visa expiry
+     * - Share Code expiry
+     * - Custom HR email
      */
     public function index(Request $request)
     {
-        if (permission::permitted('employees-edit') == 'fail') { return redirect()->route('denied'); }
+        /*
+        |--------------------------------------------------------------------------
+        | Permission
+        |--------------------------------------------------------------------------
+        */
+        if (permission::permitted('employees-edit') == 'fail') {
+            return redirect()->route('denied');
+        }
 
-        $companies = table::company()->orderBy('company')->get();
+        /*
+        |--------------------------------------------------------------------------
+        | Companies
+        |--------------------------------------------------------------------------
+        */
+        $companies = table::company()
+            ->orderBy('company')
+            ->get();
 
         $companyId = $request->query('company_id');
-        $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
 
+        $companyId = ($companyId !== null && is_numeric($companyId))
+            ? (int) $companyId
+            : null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Get latest company record for each employee
+        |--------------------------------------------------------------------------
+        |
+        | An employee can have multiple tbl_company_data records because of:
+        |
+        | - Transfer
+        | - Promotion
+        | - Department change
+        | - Company change
+        |
+        | We only want the latest record.
+        |
+        */
+        $latestCompanyDataIds = DB::table('tbl_company_data')
+            ->select(DB::raw('MAX(id) as id'))
+            ->groupBy('reference')
+            ->pluck('id');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Employees
+        |--------------------------------------------------------------------------
+        |
+        | LEFT JOIN is intentional.
+        |
+        | Passport and Share Code information exists on tbl_people and should
+        | still appear even when an employee does not yet have a company record.
+        |
+        */
         $people = table::people()
-            ->join('tbl_company_data', 'tbl_company_data.reference', '=', 'tbl_people.id')
+            ->leftJoin('tbl_company_data', function ($join) use ($latestCompanyDataIds) {
+                $join->on(
+                    'tbl_company_data.reference',
+                    '=',
+                    'tbl_people.id'
+                )->whereIn(
+                    'tbl_company_data.id',
+                    $latestCompanyDataIds
+                );
+            })
             ->where('tbl_people.employmentstatus', 'Active')
-            ->when($companyId, fn ($q) => $q->where('tbl_company_data.company_id', $companyId))
+            ->when(
+                $companyId,
+                fn ($q) => $q->where(
+                    'tbl_company_data.company_id',
+                    $companyId
+                )
+            )
             ->orderBy('tbl_people.lastname')
             ->get([
-                'tbl_people.id', 'tbl_people.firstname', 'tbl_people.lastname', 'tbl_people.emailaddress',
-                // Passport: nationalid is the passport NUMBER (display
-                // only), idexpirydate is the passport's own expiry date
-                // and is what the countdown is computed from.
-                'tbl_people.nationalid', 'tbl_people.idexpirydate',
-                // Share Code: sharecode is the code itself (display
-                // only), sharecode_expires_at drives the countdown.
-                'tbl_people.sharecode', 'tbl_people.sharecode_expires_at',
-                'tbl_company_data.visaend', 'tbl_company_data.company',
+                'tbl_people.id',
+                'tbl_people.firstname',
+                'tbl_people.lastname',
+                'tbl_people.emailaddress',
+
+                /*
+                |--------------------------------------------------------------------------
+                | Passport
+                |--------------------------------------------------------------------------
+                */
+                'tbl_people.nationalid',
+                'tbl_people.idexpirydate',
+
+                /*
+                |--------------------------------------------------------------------------
+                | Share Code
+                |--------------------------------------------------------------------------
+                */
+                'tbl_people.sharecode',
+                'tbl_people.sharecode_expires_at',
+
+                /*
+                |--------------------------------------------------------------------------
+                | Visa
+                |--------------------------------------------------------------------------
+                */
+                'tbl_company_data.visaend',
+                'tbl_company_data.company',
             ]);
 
-        $today = Carbon::now()->startOfDay();
+        /*
+        |--------------------------------------------------------------------------
+        | Today
+        |--------------------------------------------------------------------------
+        |
+        | IMPORTANT:
+        | startOfDay() means we compare calendar dates instead of timestamps.
+        |
+        */
+        $today = Carbon::today();
 
-        $passportList = $people->filter(fn ($p) => !empty($p->idexpirydate))
-            ->map(function ($p) use ($today) {
-                $p->expiryInfo = $this->expiryInfo($p->idexpirydate, $today);
-                return $p;
+        /*
+        |--------------------------------------------------------------------------
+        | Passport List
+        |--------------------------------------------------------------------------
+        */
+        $passportList = $people
+            ->filter(function ($person) {
+                return !empty($person->idexpirydate);
             })
-            ->sortBy(fn ($p) => $p->expiryInfo['sortValue'])
+            ->map(function ($person) use ($today) {
+                $person->expiryInfo = $this->expiryInfo(
+                    $person->idexpirydate,
+                    $today,
+                    'passport_expiry'
+                );
+
+                return $person;
+            })
+            ->sortBy(function ($person) {
+                return $person->expiryInfo['sortValue'];
+            })
             ->values();
 
-        $visaList = $people->filter(fn ($p) => !empty($p->visaend))
-            ->map(function ($p) use ($today) {
-                $p->expiryInfo = $this->expiryInfo($p->visaend, $today);
-                return $p;
+        /*
+        |--------------------------------------------------------------------------
+        | Visa List
+        |--------------------------------------------------------------------------
+        */
+        $visaList = $people
+            ->filter(function ($person) {
+                return !empty($person->visaend);
             })
-            ->sortBy(fn ($p) => $p->expiryInfo['sortValue'])
+            ->map(function ($person) use ($today) {
+                $person->expiryInfo = $this->expiryInfo(
+                    $person->visaend,
+                    $today,
+                    'visa_expiry'
+                );
+
+                return $person;
+            })
+            ->sortBy(function ($person) {
+                return $person->expiryInfo['sortValue'];
+            })
             ->values();
 
-        $shareCodeList = $people->filter(fn ($p) => !empty($p->sharecode_expires_at))
-            ->map(function ($p) use ($today) {
-                $p->expiryInfo = $this->expiryInfo($p->sharecode_expires_at, $today, 'sharecode_expiry');
-                return $p;
+        /*
+        |--------------------------------------------------------------------------
+        | Share Code List
+        |--------------------------------------------------------------------------
+        */
+        $shareCodeList = $people
+            ->filter(function ($person) {
+                return !empty($person->sharecode_expires_at);
             })
-            ->sortBy(fn ($p) => $p->expiryInfo['sortValue'])
+            ->map(function ($person) use ($today) {
+                $person->expiryInfo = $this->expiryInfo(
+                    $person->sharecode_expires_at,
+                    $today,
+                    'sharecode_expiry'
+                );
+
+                return $person;
+            })
+            ->sortBy(function ($person) {
+                return $person->expiryInfo['sortValue'];
+            })
             ->values();
 
-        // Small "last sent" hint per employee/type in the UI.
+        /*
+        |--------------------------------------------------------------------------
+        | Last Sent Emails
+        |--------------------------------------------------------------------------
+        */
         $lastSent = DB::table('email_logs')
-            ->select('reference', 'type', DB::raw('MAX(created_at) as last_sent_at'))
-            ->whereIn('type', ['passport_expiry', 'visa_expiry', 'sharecode_expiry'])
+            ->select(
+                'reference',
+                'type',
+                DB::raw('MAX(created_at) as last_sent_at')
+            )
+            ->whereIn('type', [
+                'passport_expiry',
+                'visa_expiry',
+                'sharecode_expiry',
+            ])
             ->groupBy('reference', 'type')
             ->get()
             ->groupBy('reference');
 
-        return view('admin.emails.index', compact(
-            'companies', 'companyId', 'passportList', 'visaList', 'shareCodeList', 'people', 'lastSent'
-        ));
+        return view(
+            'admin.emails.index',
+            compact(
+                'companies',
+                'companyId',
+                'passportList',
+                'visaList',
+                'shareCodeList',
+                'people',
+                'lastSent'
+            )
+        );
     }
 
     /**
-     * POST /emails/passport/{id} - manual "send now" for one employee's
-     * passport reminder, regardless of how far out the expiry actually is.
+     * POST /emails/passport/{id}
+     *
+     * Send passport reminder immediately.
      */
     public function sendPassportReminder(Request $request, $id)
     {
-        if (permission::permitted('employees-edit') == 'fail') { return $this->denyResponse($request); }
+        if (permission::permitted('employees-edit') == 'fail') {
+            return $this->denyResponse($request);
+        }
 
-        $person = table::people()->where('id', $id)->first();
+        /*
+        |--------------------------------------------------------------------------
+        | Employee
+        |--------------------------------------------------------------------------
+        */
+        $person = table::people()
+            ->where('id', $id)
+            ->first();
 
         if (!$person || empty($person->idexpirydate)) {
-            return $this->respond($request, false, trans('This employee has no passport expiry date on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no passport expiry date on file.')
+            );
         }
 
         if (empty($person->emailaddress)) {
-            return $this->respond($request, false, trans('This employee has no email address on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no email address on file.')
+            );
         }
 
-        $appSettings = table::settings()->where('id', 1)->first();
-        $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+        /*
+        |--------------------------------------------------------------------------
+        | Application Name
+        |--------------------------------------------------------------------------
+        */
+        $appSettings = table::settings()
+            ->where('id', 1)
+            ->first();
 
-        $expiry = Carbon::parse($person->idexpirydate)->startOfDay();
-        $today = Carbon::now()->startOfDay();
-        $daysRemaining = (int) $today->diffInDays($expiry, false);
+        $appName = !empty($appSettings->app_name)
+            ? $appSettings->app_name
+            : 'Company';
 
-        $employeeName = mb_strtoupper($person->lastname.', '.$person->firstname);
+        /*
+        |--------------------------------------------------------------------------
+        | Correct Calendar Date Calculation
+        |--------------------------------------------------------------------------
+        */
+        $expiry = $this->parseExpiryDate($person->idexpirydate);
+        $today = Carbon::today();
+
+        $daysRemaining = $this->daysBetweenDates(
+            $today,
+            $expiry
+        );
+
+        $employeeName = mb_strtoupper(
+            $person->lastname . ', ' . $person->firstname
+        );
+
         $subject = "Passport Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(new DocumentExpiryReminderMail(
-                $employeeName, 'Passport', $person->nationalid, $expiry->format('d F Y'), $daysRemaining, $appName
-            ));
+            Mail::to($person->emailaddress)->send(
+                new DocumentExpiryReminderMail(
+                    $employeeName,
+                    'Passport',
+                    $person->nationalid,
+                    $expiry->format('d F Y'),
+                    $daysRemaining,
+                    $appName
+                )
+            );
 
-            $this->logEmail($person->id, 'passport_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'sent', null);
+            $this->logEmail(
+                $person->id,
+                'passport_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'sent',
+                null
+            );
 
-            return $this->respond($request, true, trans('Passport reminder email sent to').' '.$employeeName.'.');
+            return $this->respond(
+                $request,
+                true,
+                trans('Passport reminder email sent to') .
+                ' ' .
+                $employeeName .
+                '.'
+            );
+
         } catch (\Exception $e) {
-            \Log::error('Failed to send manual passport reminder for #'.$id.': '.$e->getMessage());
-            $this->logEmail($person->id, 'passport_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'failed', $e->getMessage());
 
-            return $this->respond($request, false, trans('Something went wrong while sending the email. Please try again.'));
+            Log::error(
+                'Failed to send manual passport reminder for #' .
+                $id .
+                ': ' .
+                $e->getMessage()
+            );
+
+            $this->logEmail(
+                $person->id,
+                'passport_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'failed',
+                $e->getMessage()
+            );
+
+            return $this->respond(
+                $request,
+                false,
+                trans(
+                    'Something went wrong while sending the email. Please try again.'
+                )
+            );
         }
     }
 
     /**
-     * POST /emails/visa/{id} - manual "send now" for one employee's
-     * visa reminder.
+     * POST /emails/visa/{id}
+     *
+     * Send visa reminder immediately.
      */
     public function sendVisaReminder(Request $request, $id)
     {
-        if (permission::permitted('employees-edit') == 'fail') { return $this->denyResponse($request); }
+        if (permission::permitted('employees-edit') == 'fail') {
+            return $this->denyResponse($request);
+        }
 
-        $companyData = table::companydata()->where('reference', $id)->first();
-        $person = table::people()->where('id', $id)->first();
+        /*
+        |--------------------------------------------------------------------------
+        | Latest Company Record
+        |--------------------------------------------------------------------------
+        */
+        $companyData = table::companydata()
+            ->where('reference', $id)
+            ->orderByDesc('id')
+            ->first();
+
+        $person = table::people()
+            ->where('id', $id)
+            ->first();
 
         if (!$person || !$companyData || empty($companyData->visaend)) {
-            return $this->respond($request, false, trans('This employee has no visa expiry date on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no visa expiry date on file.')
+            );
         }
 
         if (empty($person->emailaddress)) {
-            return $this->respond($request, false, trans('This employee has no email address on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no email address on file.')
+            );
         }
 
-        $appSettings = table::settings()->where('id', 1)->first();
-        $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+        /*
+        |--------------------------------------------------------------------------
+        | Application Name
+        |--------------------------------------------------------------------------
+        */
+        $appSettings = table::settings()
+            ->where('id', 1)
+            ->first();
 
-        $expiry = Carbon::parse($companyData->visaend)->startOfDay();
-        $today = Carbon::now()->startOfDay();
-        $daysRemaining = (int) $today->diffInDays($expiry, false);
+        $appName = !empty($appSettings->app_name)
+            ? $appSettings->app_name
+            : 'Company';
 
-        $employeeName = mb_strtoupper($person->lastname.', '.$person->firstname);
+        /*
+        |--------------------------------------------------------------------------
+        | Correct Calendar Date Calculation
+        |--------------------------------------------------------------------------
+        */
+        $expiry = $this->parseExpiryDate($companyData->visaend);
+        $today = Carbon::today();
+
+        $daysRemaining = $this->daysBetweenDates(
+            $today,
+            $expiry
+        );
+
+        $employeeName = mb_strtoupper(
+            $person->lastname . ', ' . $person->firstname
+        );
+
         $subject = "Visa Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(new DocumentExpiryReminderMail(
-                $employeeName, 'Visa', null, $expiry->format('d F Y'), $daysRemaining, $appName
-            ));
+            Mail::to($person->emailaddress)->send(
+                new DocumentExpiryReminderMail(
+                    $employeeName,
+                    'Visa',
+                    null,
+                    $expiry->format('d F Y'),
+                    $daysRemaining,
+                    $appName
+                )
+            );
 
-            $this->logEmail($person->id, 'visa_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'sent', null);
+            $this->logEmail(
+                $person->id,
+                'visa_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'sent',
+                null
+            );
 
-            return $this->respond($request, true, trans('Visa reminder email sent to').' '.$employeeName.'.');
+            return $this->respond(
+                $request,
+                true,
+                trans('Visa reminder email sent to') .
+                ' ' .
+                $employeeName .
+                '.'
+            );
+
         } catch (\Exception $e) {
-            \Log::error('Failed to send manual visa reminder for #'.$id.': '.$e->getMessage());
-            $this->logEmail($person->id, 'visa_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'failed', $e->getMessage());
 
-            return $this->respond($request, false, trans('Something went wrong while sending the email. Please try again.'));
+            Log::error(
+                'Failed to send manual visa reminder for #' .
+                $id .
+                ': ' .
+                $e->getMessage()
+            );
+
+            $this->logEmail(
+                $person->id,
+                'visa_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'failed',
+                $e->getMessage()
+            );
+
+            return $this->respond(
+                $request,
+                false,
+                trans(
+                    'Something went wrong while sending the email. Please try again.'
+                )
+            );
         }
     }
 
     /**
-     * POST /emails/sharecode/{id} - manual "send now" for one employee's
-     * share code reminder.
+     * POST /emails/sharecode/{id}
+     *
+     * Send Share Code reminder immediately.
      */
     public function sendShareCodeReminder(Request $request, $id)
     {
-        if (permission::permitted('employees-edit') == 'fail') { return $this->denyResponse($request); }
+        if (permission::permitted('employees-edit') == 'fail') {
+            return $this->denyResponse($request);
+        }
 
-        $person = table::people()->where('id', $id)->first();
+        /*
+        |--------------------------------------------------------------------------
+        | Employee
+        |--------------------------------------------------------------------------
+        */
+        $person = table::people()
+            ->where('id', $id)
+            ->first();
 
         if (!$person || empty($person->sharecode_expires_at)) {
-            return $this->respond($request, false, trans('This employee has no share code expiry date on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no share code expiry date on file.')
+            );
         }
 
         if (empty($person->emailaddress)) {
-            return $this->respond($request, false, trans('This employee has no email address on file.'));
+            return $this->respond(
+                $request,
+                false,
+                trans('This employee has no email address on file.')
+            );
         }
 
-        $appSettings = table::settings()->where('id', 1)->first();
-        $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+        /*
+        |--------------------------------------------------------------------------
+        | Application Name
+        |--------------------------------------------------------------------------
+        */
+        $appSettings = table::settings()
+            ->where('id', 1)
+            ->first();
 
-        $expiry = Carbon::parse($person->sharecode_expires_at)->startOfDay();
-        $today = Carbon::now()->startOfDay();
-        $daysRemaining = (int) $today->diffInDays($expiry, false);
+        $appName = !empty($appSettings->app_name)
+            ? $appSettings->app_name
+            : 'Company';
 
-        $employeeName = mb_strtoupper($person->lastname.', '.$person->firstname);
+        /*
+        |--------------------------------------------------------------------------
+        | Correct Calendar Date Calculation
+        |--------------------------------------------------------------------------
+        |
+        | Share code may be stored as:
+        |
+        | 2028-02-21
+        |
+        | OR:
+        |
+        | 2028-02-21 23:59:59
+        |
+        | We intentionally treat it as an expiry DATE.
+        |
+        */
+        $expiry = $this->parseExpiryDate(
+            $person->sharecode_expires_at
+        );
+
+        $today = Carbon::today();
+
+        $daysRemaining = $this->daysBetweenDates(
+            $today,
+            $expiry
+        );
+
+        $employeeName = mb_strtoupper(
+            $person->lastname . ', ' . $person->firstname
+        );
+
         $subject = "Share Code Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(new DocumentExpiryReminderMail(
-                $employeeName, 'Share Code', $person->sharecode, $expiry->format('d F Y'), $daysRemaining, $appName
-            ));
+            Mail::to($person->emailaddress)->send(
+                new DocumentExpiryReminderMail(
+                    $employeeName,
+                    'Share Code',
+                    $person->sharecode,
+                    $expiry->format('d F Y'),
+                    $daysRemaining,
+                    $appName
+                )
+            );
 
-            $this->logEmail($person->id, 'sharecode_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'sent', null);
+            $this->logEmail(
+                $person->id,
+                'sharecode_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'sent',
+                null
+            );
 
-            return $this->respond($request, true, trans('Share code reminder email sent to').' '.$employeeName.'.');
+            return $this->respond(
+                $request,
+                true,
+                trans('Share code reminder email sent to') .
+                ' ' .
+                $employeeName .
+                '.'
+            );
+
         } catch (\Exception $e) {
-            \Log::error('Failed to send manual share code reminder for #'.$id.': '.$e->getMessage());
-            $this->logEmail($person->id, 'sharecode_expiry', null, $expiry->format('Y-m-d'), $person->emailaddress, $subject, 'failed', $e->getMessage());
 
-            return $this->respond($request, false, trans('Something went wrong while sending the email. Please try again.'));
+            Log::error(
+                'Failed to send manual share code reminder for #' .
+                $id .
+                ': ' .
+                $e->getMessage()
+            );
+
+            $this->logEmail(
+                $person->id,
+                'sharecode_expiry',
+                null,
+                $expiry->format('Y-m-d'),
+                $person->emailaddress,
+                $subject,
+                'failed',
+                $e->getMessage()
+            );
+
+            return $this->respond(
+                $request,
+                false,
+                trans(
+                    'Something went wrong while sending the email. Please try again.'
+                )
+            );
         }
     }
 
     /**
-     * POST /emails/custom - compose and send a general-purpose HR
-     * message to one or more selected employees.
+     * POST /emails/custom
+     *
+     * Send general HR email to selected employees.
      */
     public function sendCustom(Request $request)
     {
-        if (permission::permitted('employees-edit') == 'fail') { return $this->denyResponse($request); }
+        if (permission::permitted('employees-edit') == 'fail') {
+            return $this->denyResponse($request);
+        }
 
-        // Laravel automatically returns a 422 JSON error response for
-        // any request that expects JSON (which the AJAX call below
-        // sets via dataType: 'json') instead of redirecting, so no
-        // special handling is needed here for the AJAX case.
+        /*
+        |--------------------------------------------------------------------------
+        | Validation
+        |--------------------------------------------------------------------------
+        */
         $request->validate([
             'employee_ids' => 'required|array|min:1',
             'employee_ids.*' => 'integer|exists:tbl_people,id',
@@ -242,134 +698,445 @@ class EmailController extends Controller
             'message' => 'required|string|max:5000',
         ]);
 
-        $appSettings = table::settings()->where('id', 1)->first();
-        $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+        /*
+        |--------------------------------------------------------------------------
+        | Application Settings
+        |--------------------------------------------------------------------------
+        */
+        $appSettings = table::settings()
+            ->where('id', 1)
+            ->first();
+
+        $appName = !empty($appSettings->app_name)
+            ? $appSettings->app_name
+            : 'Company';
+
         $senderName = auth()->user()->name ?? 'HR';
 
         $sentCount = 0;
         $skipped = 0;
 
+        /*
+        |--------------------------------------------------------------------------
+        | Send Emails
+        |--------------------------------------------------------------------------
+        */
         foreach ($request->employee_ids as $employeeId) {
-            $person = table::people()->where('id', $employeeId)->first();
+
+            $person = table::people()
+                ->where('id', $employeeId)
+                ->first();
 
             if (!$person || empty($person->emailaddress)) {
                 $skipped++;
                 continue;
             }
 
-            $employeeName = mb_strtoupper($person->lastname.', '.$person->firstname);
+            $employeeName = mb_strtoupper(
+                $person->lastname . ', ' . $person->firstname
+            );
 
             try {
-                Mail::to($person->emailaddress)->send(new CustomHrMail(
-                    $employeeName, $request->subject, $request->message, $senderName, $appName
-                ));
 
-                $this->logEmail($person->id, 'custom', null, null, $person->emailaddress, $request->subject, 'sent', null);
+                Mail::to($person->emailaddress)->send(
+                    new CustomHrMail(
+                        $employeeName,
+                        $request->subject,
+                        $request->message,
+                        $senderName,
+                        $appName
+                    )
+                );
+
+                $this->logEmail(
+                    $person->id,
+                    'custom',
+                    null,
+                    null,
+                    $person->emailaddress,
+                    $request->subject,
+                    'sent',
+                    null
+                );
 
                 $sentCount++;
+
             } catch (\Exception $e) {
-                \Log::error('Failed to send custom HR email to #'.$employeeId.': '.$e->getMessage());
-                $this->logEmail($person->id, 'custom', null, null, $person->emailaddress, $request->subject, 'failed', $e->getMessage());
+
+                Log::error(
+                    'Failed to send custom HR email to #' .
+                    $employeeId .
+                    ': ' .
+                    $e->getMessage()
+                );
+
+                $this->logEmail(
+                    $person->id,
+                    'custom',
+                    null,
+                    null,
+                    $person->emailaddress,
+                    $request->subject,
+                    'failed',
+                    $e->getMessage()
+                );
 
                 $skipped++;
             }
         }
 
-        $message = trans('Email sent to').' '.$sentCount.' '.trans('employee(s).');
+        /*
+        |--------------------------------------------------------------------------
+        | Response Message
+        |--------------------------------------------------------------------------
+        */
+        $message = trans('Email sent to') .
+            ' ' .
+            $sentCount .
+            ' ' .
+            trans('employee(s).');
+
         if ($skipped > 0) {
-            $message .= ' '.$skipped.' '.trans('were skipped (no email on file, or the send failed).');
+            $message .=
+                ' ' .
+                $skipped .
+                ' ' .
+                trans(
+                    'were skipped (no email on file, or the send failed).'
+                );
         }
 
-        // Treated as a "soft success" (200, success:true) even when some
-        // recipients were skipped, since at least the request itself
-        // completed - the message text already tells the user how many
-        // were skipped and why. Only a total wipeout (0 sent) reads as
-        // a failure toast.
-        return $this->respond($request, $sentCount > 0, $message);
+        return $this->respond(
+            $request,
+            $sentCount > 0,
+            $message
+        );
     }
 
     /**
-     * Uniform AJAX/JSON vs classic redirect+flash response for every
-     * manual send action above. The Email Center view now submits all
-     * of these via AJAX and reads {success, message} back to drive a
-     * $.notify() toast - but this still degrades gracefully to the old
-     * session-flash redirect if any of these routes are ever hit as a
-     * plain (non-AJAX) form post.
+     * Parse an expiry value as a calendar date.
+     *
+     * This is intentionally based on the DATE portion.
+     *
+     * Examples:
+     *
+     * 2028-02-21
+     * 2028-02-21 23:59:59
+     * 2028-02-21T23:59:59
+     *
+     * All become:
+     *
+     * 2028-02-21 00:00:00
      */
-    private function respond(Request $request, bool $success, string $message)
+    private function parseExpiryDate($date): Carbon
     {
-        if ($request->expectsJson() || $request->ajax()) {
-            return response()->json(['success' => $success, 'message' => $message], $success ? 200 : 422);
-        }
-
-        return $success ? back()->with('success', $message) : back()->with('error', $message);
+        return Carbon::parse($date)->startOfDay();
     }
 
     /**
-     * Same AJAX/redirect split as respond() above, for the
-     * permission-denied case specifically.
+     * Calculate signed calendar-day difference.
+     *
+     * Positive:
+     *   expiry is in the future
+     *
+     * Zero:
+     *   expiry is today
+     *
+     * Negative:
+     *   expiry is in the past
+     */
+    private function daysBetweenDates(
+        Carbon $today,
+        Carbon $expiry
+    ): int {
+        $today = $today->copy()->startOfDay();
+        $expiry = $expiry->copy()->startOfDay();
+
+        return (int) $today->diffInDays(
+            $expiry,
+            false
+        );
+    }
+
+    /**
+     * Shared expiry status logic.
+     *
+     * Used by:
+     * - Passport
+     * - Visa
+     * - Share Code
+     */
+    private function expiryInfo(
+        $date,
+        Carbon $today,
+        string $type = 'default'
+    ): array {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Empty Date
+        |--------------------------------------------------------------------------
+        */
+        if (empty($date)) {
+            return [
+                'class' => 'bg-secondary',
+                'text' => trans('No expiry date'),
+                'expiryDate' => null,
+                'sortValue' => PHP_INT_MAX,
+                'daysRemaining' => null,
+            ];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Normalize both dates to calendar dates
+        |--------------------------------------------------------------------------
+        */
+        $today = $today->copy()->startOfDay();
+        $expiry = $this->parseExpiryDate($date);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Signed calendar-day difference
+        |--------------------------------------------------------------------------
+        |
+        | This remains the numeric value used for sorting and threshold checks.
+        |
+        */
+        $daysRemaining = $this->daysBetweenDates(
+            $today,
+            $expiry
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | EXPIRED
+        |--------------------------------------------------------------------------
+        */
+        if ($daysRemaining < 0) {
+
+            $daysAgo = abs($daysRemaining);
+
+            return [
+                'class' => 'bg-danger',
+
+                'text' => trans('Expired') .
+                    ' (' .
+                    $this->formatExpiryDuration(
+                        $expiry,
+                        $today,
+                        true
+                    ) .
+                    ')',
+
+                'expiryDate' => $expiry->format('d F Y'),
+                'sortValue' => $daysRemaining,
+                'daysRemaining' => $daysRemaining,
+            ];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | EXPIRES TODAY
+        |--------------------------------------------------------------------------
+        */
+        if ($daysRemaining === 0) {
+
+            return [
+                'class' => 'bg-danger',
+                'text' => trans('Expires today'),
+                'expiryDate' => $expiry->format('d F Y'),
+                'sortValue' => 0,
+                'daysRemaining' => 0,
+            ];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Danger Threshold
+        |--------------------------------------------------------------------------
+        |
+        | Passport / Visa:
+        |   20 days or less = danger
+        |
+        | Share Code:
+        |   6 days or less = danger
+        |
+        */
+        $dangerDaysThreshold =
+            $type === 'sharecode_expiry'
+                ? 6
+                : self::DAYS_MILESTONE;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Five-Month Milestone
+        |--------------------------------------------------------------------------
+        */
+        $milestoneDate = $today->copy()
+            ->addMonthsNoOverflow(self::MONTHS_MILESTONE)
+            ->startOfDay();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Colour
+        |--------------------------------------------------------------------------
+        */
+        if ($expiry->lessThanOrEqualTo($milestoneDate)) {
+
+            if ($daysRemaining <= $dangerDaysThreshold) {
+                $class = 'bg-danger';
+            } else {
+                $class = 'bg-warning';
+            }
+
+        } else {
+            $class = 'bg-success';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Remaining Expiry
+        |--------------------------------------------------------------------------
+        |
+        | Display a human calendar duration:
+        |
+        | 6 days remaining
+        | 6 months 2 days remaining
+        | 1 year 5 months 28 days remaining
+        |
+        | The actual day difference is still retained separately for sorting.
+        |
+        */
+        return [
+            'class' => $class,
+
+            'text' => $this->formatExpiryDuration(
+                $expiry,
+                $today
+            ) . ' ' . trans('remaining'),
+
+            'expiryDate' => $expiry->format('d F Y'),
+            'sortValue' => $daysRemaining,
+            'daysRemaining' => $daysRemaining,
+        ];
+    }
+
+    /**
+     * Format the remaining expiry as calendar years/months/days.
+     *
+     * Examples:
+     *
+     * 6 days remaining
+     * 6 months 2 days remaining
+     * 1 year 5 months 28 days remaining
+     */
+    private function formatExpiryDuration(
+        Carbon $expiry,
+        Carbon $today,
+        bool $expired = false
+    ): string {
+
+        $today = $today->copy()->startOfDay();
+        $expiry = $expiry->copy()->startOfDay();
+
+        $from = $expired ? $expiry : $today;
+        $to = $expired ? $today : $expiry;
+
+        $diff = $from->diff($to);
+
+        $parts = [];
+
+        if ($diff->y > 0) {
+            $parts[] = $diff->y . ' ' .
+                ($diff->y === 1 ? trans('year') : trans('years'));
+        }
+
+        if ($diff->m > 0) {
+            $parts[] = $diff->m . ' ' .
+                ($diff->m === 1 ? trans('month') : trans('months'));
+        }
+
+        if ($diff->d > 0) {
+            $parts[] = $diff->d . ' ' .
+                ($diff->d === 1 ? trans('day') : trans('days'));
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Safety fallback
+        |--------------------------------------------------------------------------
+        */
+        if (empty($parts)) {
+            return '0 ' . trans('days');
+        }
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * AJAX/JSON or normal redirect response.
+     */
+    private function respond(
+        Request $request,
+        bool $success,
+        string $message
+    ) {
+        if (
+            $request->expectsJson() ||
+            $request->ajax()
+        ) {
+            return response()->json(
+                [
+                    'success' => $success,
+                    'message' => $message,
+                ],
+                $success ? 200 : 422
+            );
+        }
+
+        return $success
+            ? back()->with('success', $message)
+            : back()->with('error', $message);
+    }
+
+    /**
+     * Permission denied response.
      */
     private function denyResponse(Request $request)
     {
-        if ($request->expectsJson() || $request->ajax()) {
-            return response()->json(['success' => false, 'message' => trans('You do not have permission to do this.')], 403);
+        if (
+            $request->expectsJson() ||
+            $request->ajax()
+        ) {
+            return response()->json(
+                [
+                    'success' => false,
+                    'message' => trans(
+                        'You do not have permission to do this.'
+                    ),
+                ],
+                403
+            );
         }
 
         return redirect()->route('denied');
     }
 
     /**
-     * Shared colour/label logic for the passport, visa & share code
-     * lists - mirrors the thresholds ProfileController/profile-view
-     * already use, plus a sortValue so expired documents always float
-     * to the top.
-     *
-     * @param string $type 'default', or 'sharecode_expiry' to use the
-     *        tighter 6-day danger threshold that matches the extra
-     *        close-to-expiry milestone SendExpiryReminders sends for
-     *        share codes specifically (see dayMilestonesFor() there).
+     * Save email log.
      */
-    private function expiryInfo($date, Carbon $today, string $type = 'default'): array
-    {
-        $expiry = Carbon::parse($date)->startOfDay();
+    private function logEmail(
+        $reference,
+        $type,
+        $milestone,
+        $documentDate,
+        $toEmail,
+        $subject,
+        $status,
+        $errorMessage
+    ): void {
 
-        if ($expiry->isPast()) {
-            $daysAgo = (int) $expiry->diffInDays($today);
-            return [
-                'class' => 'bg-danger',
-                'text' => trans('Expired').' ('.$daysAgo.' '.trans('days ago').')',
-                'expiryDate' => $expiry->format('d F Y'),
-                'sortValue' => -999999 + $daysAgo, // most overdue first
-            ];
-        }
-
-        $days = (int) $today->diffInDays($expiry);
-        $months = (int) $today->diffInMonths($expiry);
-
-        // Share codes tend to have much shorter validity windows than a
-        // passport or visa, so "urgent" for one means something closer
-        // to expiry than for the other.
-        $dangerDaysThreshold = $type === 'sharecode_expiry' ? 6 : self::DAYS_MILESTONE;
-
-        $class = $months <= self::MONTHS_MILESTONE
-            ? ($days <= $dangerDaysThreshold ? 'bg-danger' : 'bg-warning')
-            : 'bg-success';
-
-        return [
-            'class' => $class,
-            'text' => $days.' '.trans('days remaining'),
-            'expiryDate' => $expiry->format('d F Y'),
-            'sortValue' => $days,
-        ];
-    }
-
-    /**
-     * Small helper to keep the repeated email_logs insert (identical
-     * columns every time, just different values) out of every manual
-     * send method above.
-     */
-    private function logEmail($reference, $type, $milestone, $documentDate, $toEmail, $subject, $status, $errorMessage): void
-    {
         DB::table('email_logs')->insert([
             'reference' => $reference,
             'type' => $type,
@@ -379,7 +1146,11 @@ class EmailController extends Controller
             'subject' => $subject,
             'sent_by' => auth()->id(),
             'status' => $status,
-            'error' => $errorMessage ? substr($errorMessage, 0, 500) : null,
+
+            'error' => $errorMessage
+                ? substr($errorMessage, 0, 500)
+                : null,
+
             'created_at' => now(),
             'updated_at' => now(),
         ]);
