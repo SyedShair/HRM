@@ -43,16 +43,18 @@
     color: #1f2937;
 }
 
-.expiring-row,
-.table-striped tbody tr.expiring-row,
-.table tbody tr.expiring-row {
-    animation: expiryBlink 1.2s ease-in-out infinite !important;
+#dataTables tbody tr.expiring-row {
+    animation: expiryBlink 1.2s ease-in-out infinite;
     border-left: 4px solid #d93025 !important;
 }
 
+#dataTables tbody tr.expiring-row:hover {
+    animation: expiryBlink 1.2s ease-in-out infinite;
+}
+
 @keyframes expiryBlink {
-    0%, 100% { background-color: #ffffff !important; }
-    50% { background-color: #ffb3b3 !important; }
+    0%, 100% { background-color: #ffffff; }
+    50% { background-color: #ffb3b3; }
 }
 
 .visa-expiry-sub {
@@ -63,6 +65,51 @@
 .passport-expiry-warning {
     color: #d93025;
     font-weight: 600;
+}
+
+/*
+    Passport No / Share Code eye toggle. The raw value is hidden by
+    default (.secret-value) - clicking the eye icon next to it adds
+    .revealed and flips the icon to "eye slash". The remaining-time
+    badge underneath is unaffected either way, so the column is always
+    useful even with the value hidden.
+*/
+.secret-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.secret-value {
+    display: none;
+    font-weight: 600;
+    color: #1f2937;
+    letter-spacing: 0.02em;
+}
+
+.secret-value.revealed {
+    display: inline;
+}
+
+.toggle-secret {
+    color: #6b7280;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.toggle-secret:hover {
+    color: #1f2937;
+}
+
+.toggle-secret i.icon {
+    margin: 0 !important;
+    font-size: 13px !important;
+}
+
+.cell-muted {
+    color: #9ca3af;
 }
 
 /* Preloader overlay for AJAX table refresh */
@@ -180,23 +227,46 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-    // Delegated so this keeps working on rows swapped in by the
-    // company-filter AJAX call below (rows that didn't exist yet
-    // when the page first loaded).
+    /*
+        Single delegated listener for both actions below - delegated
+        (bound on document.body, matched by closest()) rather than bound
+        directly to each row's elements, because rows get swapped out
+        wholesale by the company-filter AJAX call further down. A
+        directly-bound handler would only work on the rows present at
+        page load and silently stop working on any row loaded afterward.
+    */
     document.body.addEventListener('click', function (e) {
-        const btn = e.target.closest('.download-qr');
-        if (!btn) return;
 
-        const canvas = document.createElement('canvas');
+        // ---- QR download ----
+        const qrBtn = e.target.closest('.download-qr');
+        if (qrBtn) {
+            const canvas = document.createElement('canvas');
 
-        QRCode.toCanvas(canvas, btn.dataset.pdf, { width: 300 }, function (err) {
-            if (err) return alert("QR Error");
+            QRCode.toCanvas(canvas, qrBtn.dataset.pdf, { width: 300 }, function (err) {
+                if (err) return alert("QR Error");
 
-            const link = document.createElement('a');
-            link.href = canvas.toDataURL('image/png');
-            link.download = 'employee-qr.png';
-            link.click();
-        });
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = 'employee-qr.png';
+                link.click();
+            });
+            return;
+        }
+
+        // ---- Passport No / Share Code eye toggle ----
+        const toggleBtn = e.target.closest('.toggle-secret');
+        if (toggleBtn) {
+            const row = toggleBtn.closest('.secret-row');
+            const value = row ? row.querySelector('.secret-value') : null;
+            if (!value) return;
+
+            const revealed = value.classList.toggle('revealed');
+
+            const icon = toggleBtn.querySelector('i.icon');
+            icon.classList.toggle('slash', revealed);
+
+            toggleBtn.title = revealed ? 'Hide value' : 'Show value';
+        }
     });
 
 });
