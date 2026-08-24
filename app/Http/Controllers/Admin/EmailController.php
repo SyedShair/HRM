@@ -173,13 +173,30 @@ class EmailController extends Controller
                 return !empty($person->idexpirydate);
             })
             ->map(function ($person) use ($today) {
-                $person->expiryInfo = $this->expiryInfo(
-                    $person->idexpirydate,
+                // IMPORTANT: clone before attaching expiryInfo. $people
+                // is one shared collection, and filter() below returns
+                // the SAME object references, not copies - so if the
+                // same employee appears in more than one of these three
+                // lists (e.g. they have a passport, visa, AND share
+                // code all on file), mutating $person->expiryInfo
+                // directly would overwrite the SAME underlying object
+                // three times as passportList/visaList/shareCodeList
+                // each ran their map() in turn. Since Blade only reads
+                // expiryInfo later at render time, every list that
+                // touched that shared object would end up displaying
+                // whichever calculation ran LAST (Share Code's, since
+                // it's built last below) - which is exactly the "same
+                // date/remaining time on every tab" bug. Cloning gives
+                // each list its own independent object instead.
+                $clone = clone $person;
+
+                $clone->expiryInfo = $this->expiryInfo(
+                    $clone->idexpirydate,
                     $today,
                     'passport_expiry'
                 );
 
-                return $person;
+                return $clone;
             })
             ->sortBy(function ($person) {
                 return $person->expiryInfo['sortValue'];
@@ -196,13 +213,17 @@ class EmailController extends Controller
                 return !empty($person->visaend);
             })
             ->map(function ($person) use ($today) {
-                $person->expiryInfo = $this->expiryInfo(
-                    $person->visaend,
+                // Clone for the same reason as passportList above - do
+                // not mutate the shared $people object in place.
+                $clone = clone $person;
+
+                $clone->expiryInfo = $this->expiryInfo(
+                    $clone->visaend,
                     $today,
                     'visa_expiry'
                 );
 
-                return $person;
+                return $clone;
             })
             ->sortBy(function ($person) {
                 return $person->expiryInfo['sortValue'];
@@ -219,13 +240,17 @@ class EmailController extends Controller
                 return !empty($person->sharecode_expires_at);
             })
             ->map(function ($person) use ($today) {
-                $person->expiryInfo = $this->expiryInfo(
-                    $person->sharecode_expires_at,
+                // Clone for the same reason as passportList above - do
+                // not mutate the shared $people object in place.
+                $clone = clone $person;
+
+                $clone->expiryInfo = $this->expiryInfo(
+                    $clone->sharecode_expires_at,
                     $today,
                     'sharecode_expiry'
                 );
 
-                return $person;
+                return $clone;
             })
             ->sortBy(function ($person) {
                 return $person->expiryInfo['sortValue'];
@@ -834,16 +859,29 @@ class EmailController extends Controller
     }
 
     /**
-     * Calculate signed calendar-day difference.
+     * Calculate signed calendar-day difference between today and an
+     * expiry date. Shared by every expiry calculation in this
+     * controller - the on-screen Passport/Visa/Share Code status
+     * badges (via expiryInfo() below) AND the three reminder-email
+     * senders all call this one method, so a single fix here corrects
+     * all of them at once.
      *
-     * Positive:
-     *   expiry is in the future
-     *
-     * Zero:
-     *   expiry is today
+     * Positive/zero:
+     *   expiry is today or in the future
      *
      * Negative:
      *   expiry is in the past
+     *
+     * IMPORTANT: this deliberately does NOT rely on Carbon's
+     * diffInDays($other, false) sign convention. That flag's direction
+     * is not reliably consistent across Carbon versions (it depends on
+     * an internal invert-flag that has actually changed behavior
+     * between majors), so trusting it directly risked every expiry
+     * status in this controller being silently backwards - "Expired"
+     * shown for a future date, or vice versa. Instead, the magnitude is
+     * computed with diffInDays()'s safe, always-positive default, and
+     * the sign is then applied explicitly via our own comparison -
+     * this can never be ambiguous regardless of Carbon version.
      */
     private function daysBetweenDates(
         Carbon $today,
@@ -852,10 +890,54 @@ class EmailController extends Controller
         $today = $today->copy()->startOfDay();
         $expiry = $expiry->copy()->startOfDay();
 
-        return (int) $today->diffInDays(
-            $expiry,
-            false
-        );
+        $magnitude = (int) $today->diffInDays($expiry);
+
+        return $expiry->greaterThanOrEqualTo($today) ? $magnitude : -$magnitude;
+    }
+
+    /**
+     * Calendar-accurate "X years Y months Z days" breakdown between two
+     * dates, used only for DISPLAY text - the day-count logic used for
+     * thresholds/sorting (daysBetweenDates() above) is untouched and
+     * still drives every color/status decision. A raw day count like
+     * "142 days remaining" is much harder to read at a glance than
+     * "4 months 22 days remaining", so this converts the same
+     * underlying gap into calendar units for the text shown in the
+     * badges (and mirrors the breakdown style already used elsewhere
+     * in the app, e.g. the dashboard's visa/passport countdowns).
+     *
+     * Always returns a positive/zero breakdown of the gap between the
+     * two dates - the calling code is responsible for the
+     * "ago" / "remaining" wording around it.
+     */
+    private function formatDuration(Carbon $today, Carbon $expiry): string
+    {
+        $today = $today->copy()->startOfDay();
+        $expiry = $expiry->copy()->startOfDay();
+
+        // diff() returns an absolute (always-positive) breakdown
+        // regardless of which date is earlier, so this works the same
+        // whether $expiry is in the past or future.
+        $diff = $today->diff($expiry);
+
+        $parts = [];
+
+        if ($diff->y > 0) {
+            $parts[] = $diff->y . ' ' . trans($diff->y == 1 ? 'year' : 'years');
+        }
+
+        if ($diff->m > 0) {
+            $parts[] = $diff->m . ' ' . trans($diff->m == 1 ? 'month' : 'months');
+        }
+
+        // Always show days, even at 0, unless years/months already
+        // cover the whole gap exactly (e.g. exactly "6 months" with no
+        // leftover days) - avoids "0 days" tacked onto a clean figure.
+        if ($diff->d > 0 || empty($parts)) {
+            $parts[] = $diff->d . ' ' . trans($diff->d == 1 ? 'day' : 'days');
+        }
+
+        return implode(' ', $parts);
     }
 
     /**
@@ -883,25 +965,22 @@ class EmailController extends Controller
                 'text' => trans('No expiry date'),
                 'expiryDate' => null,
                 'sortValue' => PHP_INT_MAX,
-                'daysRemaining' => null,
             ];
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Normalize both dates to calendar dates
+        | Normalize Dates
         |--------------------------------------------------------------------------
         */
         $today = $today->copy()->startOfDay();
+
         $expiry = $this->parseExpiryDate($date);
 
         /*
         |--------------------------------------------------------------------------
-        | Signed calendar-day difference
+        | Signed Calendar Difference
         |--------------------------------------------------------------------------
-        |
-        | This remains the numeric value used for sorting and threshold checks.
-        |
         */
         $daysRemaining = $this->daysBetweenDates(
             $today,
@@ -915,23 +994,27 @@ class EmailController extends Controller
         */
         if ($daysRemaining < 0) {
 
-            $daysAgo = abs($daysRemaining);
-
             return [
                 'class' => 'bg-danger',
 
                 'text' => trans('Expired') .
                     ' (' .
-                    $this->formatExpiryDuration(
-                        $expiry,
-                        $today,
-                        true
-                    ) .
+                    $this->formatDuration($today, $expiry) .
+                    ' ' .
+                    trans('ago') .
                     ')',
 
                 'expiryDate' => $expiry->format('d F Y'),
+
+                /*
+                |--------------------------------------------------------------------------
+                | Sorting
+                |--------------------------------------------------------------------------
+                |
+                | Most overdue appears first.
+                |
+                */
                 'sortValue' => $daysRemaining,
-                'daysRemaining' => $daysRemaining,
             ];
         }
 
@@ -947,7 +1030,6 @@ class EmailController extends Controller
                 'text' => trans('Expires today'),
                 'expiryDate' => $expiry->format('d F Y'),
                 'sortValue' => 0,
-                'daysRemaining' => 0,
             ];
         }
 
@@ -972,10 +1054,19 @@ class EmailController extends Controller
         |--------------------------------------------------------------------------
         | Five-Month Milestone
         |--------------------------------------------------------------------------
+        |
+        | We use an actual calendar date instead of diffInMonths().
+        |
+        | Example:
+        |
+        | Today: 24 Aug 2026
+        | + 5 months = 24 Jan 2027
+        |
         */
         $milestoneDate = $today->copy()
-            ->addMonthsNoOverflow(self::MONTHS_MILESTONE)
-            ->startOfDay();
+            ->addMonthsNoOverflow(
+                self::MONTHS_MILESTONE
+            );
 
         /*
         |--------------------------------------------------------------------------
@@ -991,87 +1082,34 @@ class EmailController extends Controller
             }
 
         } else {
+
             $class = 'bg-success';
         }
 
         /*
         |--------------------------------------------------------------------------
-        | Remaining Expiry
+        | Final Result
         |--------------------------------------------------------------------------
-        |
-        | Display a human calendar duration:
-        |
-        | 6 days remaining
-        | 6 months 2 days remaining
-        | 1 year 5 months 28 days remaining
-        |
-        | The actual day difference is still retained separately for sorting.
-        |
         */
         return [
             'class' => $class,
 
-            'text' => $this->formatExpiryDuration(
-                $expiry,
-                $today
-            ) . ' ' . trans('remaining'),
+            'text' => $this->formatDuration($today, $expiry) .
+                ' ' .
+                trans('remaining'),
 
             'expiryDate' => $expiry->format('d F Y'),
+
+            /*
+            |--------------------------------------------------------------------------
+            | Sorting
+            |--------------------------------------------------------------------------
+            |
+            | Soonest expiry first.
+            |
+            */
             'sortValue' => $daysRemaining,
-            'daysRemaining' => $daysRemaining,
         ];
-    }
-
-    /**
-     * Format the remaining expiry as calendar years/months/days.
-     *
-     * Examples:
-     *
-     * 6 days remaining
-     * 6 months 2 days remaining
-     * 1 year 5 months 28 days remaining
-     */
-    private function formatExpiryDuration(
-        Carbon $expiry,
-        Carbon $today,
-        bool $expired = false
-    ): string {
-
-        $today = $today->copy()->startOfDay();
-        $expiry = $expiry->copy()->startOfDay();
-
-        $from = $expired ? $expiry : $today;
-        $to = $expired ? $today : $expiry;
-
-        $diff = $from->diff($to);
-
-        $parts = [];
-
-        if ($diff->y > 0) {
-            $parts[] = $diff->y . ' ' .
-                ($diff->y === 1 ? trans('year') : trans('years'));
-        }
-
-        if ($diff->m > 0) {
-            $parts[] = $diff->m . ' ' .
-                ($diff->m === 1 ? trans('month') : trans('months'));
-        }
-
-        if ($diff->d > 0) {
-            $parts[] = $diff->d . ' ' .
-                ($diff->d === 1 ? trans('day') : trans('days'));
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Safety fallback
-        |--------------------------------------------------------------------------
-        */
-        if (empty($parts)) {
-            return '0 ' . trans('days');
-        }
-
-        return implode(' ', $parts);
     }
 
     /**

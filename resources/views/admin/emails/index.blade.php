@@ -280,6 +280,10 @@
         background: #dc2626;
     }
 
+    .bg-secondary {
+        background: #9ca3af;
+    }
+
     .last-sent-hint {
         font-size: 11px;
         color: #9ca3af;
@@ -919,62 +923,19 @@
                                         {{ $person->expiryInfo['expiryDate'] }}
                                     </td>
 
+                                    {{--
+                                        STATUS: uses $person->expiryInfo, computed once in
+                                        EmailController@expiryInfo() specifically for the
+                                        'passport_expiry' type (5-month milestone, danger at
+                                        <= 20 days, proper "Expired"/"Expires today" text).
+                                        This used to be recalculated inline here with a
+                                        generic 2/6-month scheme that ignored the type
+                                        entirely - removed in favour of the real value.
+                                    --}}
                                     <td data-label="{{ __('Status') }}">
-
-                                        @php
-                                            $expiryDate = \Carbon\Carbon::parse(
-                                                $person->expiryInfo['expiryDate']
-                                            )->startOfDay();
-
-                                            $today = \Carbon\Carbon::today();
-
-                                            if ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(2))) {
-
-                                                $statusClass = 'bg-danger';
-                                                $statusText = __('2 months or less');
-
-                                            } elseif ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(6))) {
-
-                                                $statusClass = 'bg-warning';
-                                                $statusText = __('2 to 6 months');
-
-                                            } else {
-
-                                                $statusClass = 'bg-success';
-
-                                                $diff = $today->diff($expiryDate);
-
-                                                $months = ($diff->y * 12) + $diff->m;
-                                                $days = $diff->d;
-
-                                                if ($months > 0) {
-
-                                                    $statusText = $months . ' ' .
-                                                        ($months === 1
-                                                            ? __('month')
-                                                            : __('months'));
-
-                                                    if ($days > 0) {
-                                                        $statusText .= ', ' . $days . ' ' .
-                                                            ($days === 1
-                                                                ? __('day')
-                                                                : __('days'));
-                                                    }
-
-                                                } else {
-
-                                                    $statusText = $days . ' ' .
-                                                        ($days === 1
-                                                            ? __('day')
-                                                            : __('days'));
-                                                }
-                                            }
-                                        @endphp
-
-                                        <span class="badge {{ $statusClass }}">
-                                            {{ $statusText }}
+                                        <span class="badge {{ $person->expiryInfo['class'] }}">
+                                            {{ $person->expiryInfo['text'] }}
                                         </span>
-
                                     </td>
 
                                     <td data-label="{{ __('Actions') }}" class="text-right">
@@ -1127,62 +1088,17 @@
                                         {{ $person->expiryInfo['expiryDate'] }}
                                     </td>
 
+                                    {{--
+                                        STATUS: same fix as Passport above - was previously
+                                        recalculated inline with the exact same generic
+                                        2/6-month scheme (i.e. it was displaying Passport's
+                                        rules, not Visa's own 'visa_expiry' thresholds).
+                                        Now uses the controller's computed expiryInfo.
+                                    --}}
                                     <td data-label="{{ __('Status') }}">
-
-                                        @php
-                                            $expiryDate = \Carbon\Carbon::parse(
-                                                $person->expiryInfo['expiryDate']
-                                            )->startOfDay();
-
-                                            $today = \Carbon\Carbon::today();
-
-                                            if ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(2))) {
-
-                                                $statusClass = 'bg-danger';
-                                                $statusText = __('2 months or less');
-
-                                            } elseif ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(6))) {
-
-                                                $statusClass = 'bg-warning';
-                                                $statusText = __('2 to 6 months');
-
-                                            } else {
-
-                                                $statusClass = 'bg-success';
-
-                                                $diff = $today->diff($expiryDate);
-
-                                                $months = ($diff->y * 12) + $diff->m;
-                                                $days = $diff->d;
-
-                                                if ($months > 0) {
-
-                                                    $statusText = $months . ' ' .
-                                                        ($months === 1
-                                                            ? __('month')
-                                                            : __('months'));
-
-                                                    if ($days > 0) {
-                                                        $statusText .= ', ' . $days . ' ' .
-                                                            ($days === 1
-                                                                ? __('day')
-                                                                : __('days'));
-                                                    }
-
-                                                } else {
-
-                                                    $statusText = $days . ' ' .
-                                                        ($days === 1
-                                                            ? __('day')
-                                                            : __('days'));
-                                                }
-                                            }
-                                        @endphp
-
-                                        <span class="badge {{ $statusClass }}">
-                                            {{ $statusText }}
+                                        <span class="badge {{ $person->expiryInfo['class'] }}">
+                                            {{ $person->expiryInfo['text'] }}
                                         </span>
-
                                     </td>
 
                                     <td data-label="{{ __('Actions') }}" class="text-right">
@@ -1340,62 +1256,19 @@
                                         {{ $person->expiryInfo['expiryDate'] }}
                                     </td>
 
+                                    {{--
+                                        STATUS: this was the most visibly wrong of the three
+                                        - Share Code is meant to go red at 6 days or less
+                                        (see EmailController's DAYS_MILESTONE handling for
+                                        'sharecode_expiry'), but the old inline logic here
+                                        used the same 2-month danger cutoff as Passport, so
+                                        Share Code never reflected its own tighter deadline.
+                                        Fixed the same way as the other two panels.
+                                    --}}
                                     <td data-label="{{ __('Status') }}">
-
-                                        @php
-                                            $expiryDate = \Carbon\Carbon::parse(
-                                                $person->expiryInfo['expiryDate']
-                                            )->startOfDay();
-
-                                            $today = \Carbon\Carbon::today();
-
-                                            if ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(2))) {
-
-                                                $statusClass = 'bg-danger';
-                                                $statusText = __('2 months or less');
-
-                                            } elseif ($expiryDate->lessThanOrEqualTo($today->copy()->addMonths(6))) {
-
-                                                $statusClass = 'bg-warning';
-                                                $statusText = __('2 to 6 months');
-
-                                            } else {
-
-                                                $statusClass = 'bg-success';
-
-                                                $diff = $today->diff($expiryDate);
-
-                                                $months = ($diff->y * 12) + $diff->m;
-                                                $days = $diff->d;
-
-                                                if ($months > 0) {
-
-                                                    $statusText = $months . ' ' .
-                                                        ($months === 1
-                                                            ? __('month')
-                                                            : __('months'));
-
-                                                    if ($days > 0) {
-                                                        $statusText .= ', ' . $days . ' ' .
-                                                            ($days === 1
-                                                                ? __('day')
-                                                                : __('days'));
-                                                    }
-
-                                                } else {
-
-                                                    $statusText = $days . ' ' .
-                                                        ($days === 1
-                                                            ? __('day')
-                                                            : __('days'));
-                                                }
-                                            }
-                                        @endphp
-
-                                        <span class="badge {{ $statusClass }}">
-                                            {{ $statusText }}
+                                        <span class="badge {{ $person->expiryInfo['class'] }}">
+                                            {{ $person->expiryInfo['text'] }}
                                         </span>
-
                                     </td>
 
                                     <td data-label="{{ __('Actions') }}" class="text-right">
