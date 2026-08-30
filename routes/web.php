@@ -125,11 +125,9 @@ Route::group(['middleware' => 'auth'], function () {
 Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
 Route::get('audit/sessions/live', [AuditController::class, 'sessions'])->name('audit.sessions');
 Route::get('audit/export/{format}', [AuditController::class, 'export'])->name('audit.export');
+Route::post('audit/bulk-delete', [AuditController::class, 'bulkDelete'])->name('audit.bulkDelete');
+Route::post('audit/sessions/bulk-delete', [AuditController::class, 'bulkDeleteSessions'])->name('audit.sessions.bulkDelete');
 Route::get('audit/{id}', [AuditController::class, 'show'])->name('audit.show');
-
-
-
-
 
             Route::get('/contract/print/{id}', [ContractController::class, 'printContract'])->name('contract.print');
 

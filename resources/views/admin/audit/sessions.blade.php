@@ -23,6 +23,13 @@
 @section('content')
 <div class="container-fluid">
 
+    @if(session('success'))
+        <div class="ui positive message"><i class="close icon"></i>{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="ui negative message"><i class="close icon"></i>{{ session('error') }}</div>
+    @endif
+
     <div class="row">
         <div class="col-md-12">
             <h2 class="page-title">
@@ -30,6 +37,9 @@
                 <span style="font-size:13px; font-weight:400; color:#6b7280;">
                     ({{ __('a session is marked offline after :n minutes of inactivity', ['n' => $timeout]) }})
                 </span>
+                <button type="button" id="bulk-delete-btn" class="ui red basic button mini offsettop5 float-right" disabled>
+                    <i class="ui icon trash alternate outline"></i> {{ __('Delete Selected') }}
+                </button>
                 <a href="{{ route('audit.index') }}" class="ui basic button mini offsettop5 float-right">
                     <i class="ui icon arrow left"></i> {{ __('Back to Audit Log') }}
                 </a>
@@ -41,9 +51,10 @@
         <div class="col-md-12">
             <div class="box box-success">
                 <div class="box-body" style="overflow-x:auto;">
-                    <table class="sessions-table" id="sessions-table" width="100%" data-order='[[ 3, "desc" ]]'>
+                    <table class="sessions-table" id="sessions-table" width="100%" data-order='[[ 4, "desc" ]]'>
                         <thead>
                             <tr>
+                                <th style="width:36px;"><input type="checkbox" id="select-all-sessions"></th>
                                 <th>{{ __('User') }}</th>
                                 <th>{{ __('Role') }}</th>
                                 <th>{{ __('Login Time') }}</th>
@@ -58,6 +69,7 @@
                         <tbody>
                             @forelse($sessions as $s)
                                 <tr>
+                                    <td><input type="checkbox" class="row-checkbox" value="{{ $s->id }}"></td>
                                     <td>{{ $s->user_name ?? ('User #'.$s->user_id) }}</td>
                                     <td>{{ $s->role_name ?? $s->acc_type ?? '—' }}</td>
                                     <td>{{ $s->login_at ? \Carbon\Carbon::parse($s->login_at)->format('d M Y H:i:s') : '—' }}</td>
@@ -69,11 +81,42 @@
                                     <td><span class="badge-status badge-{{ $s->status }}">{{ $s->status }}</span></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="9" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No sessions recorded yet.') }}</td></tr>
+                                <tr><td colspan="10" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No sessions recorded yet.') }}</td></tr>
                             @endforelse
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= BULK DELETE FORM (hidden - populated by JS on confirm) ================= -->
+    <form id="bulk-delete-sessions-form" method="POST" action="{{ route('audit.sessions.bulkDelete') }}" style="display:none;">
+        @csrf
+        <div id="bulk-delete-sessions-ids-container"></div>
+    </form>
+
+    <!-- ================= BULK DELETE CONFIRMATION MODAL ================= -->
+    <div class="ui basic modal" id="bulkDeleteSessionsConfirmModal">
+        <div class="ui icon header" style="border:none;">
+            <i class="trash alternate outline icon" style="color:#d93025;"></i>
+            {{ __('Delete Selected Sessions') }}
+        </div>
+        <div class="content" style="text-align:center; color:#e5e7eb;">
+            <p style="font-size:15px; margin:0;">
+                {{ __('Are you sure you want to permanently delete') }}
+                <strong id="bulkDeleteSessionsCount" style="color:#fff;"></strong> {{ __('selected session(s)?') }}
+            </p>
+            <p style="font-size:12px; color:#9ca3af; margin-top:8px;">
+                {{ __('This action cannot be undone.') }}
+            </p>
+        </div>
+        <div class="actions" style="text-align:center; border:none; padding-bottom:20px;">
+            <div class="ui red basic inverted cancel button">
+                <i class="times icon"></i> {{ __('Cancel') }}
+            </div>
+            <div class="ui red inverted ok button" id="bulkDeleteSessionsConfirmButton">
+                <i class="checkmark icon"></i> {{ __('Yes, Delete') }}
             </div>
         </div>
     </div>
@@ -83,12 +126,43 @@
 
 @section('scripts')
 <script>
-    $('#sessions-table').DataTable({
+    var sessionsTable = $('#sessions-table').DataTable({
         responsive: true,
         pageLength: 25,
         lengthChange: true,
         searching: true,
-        ordering: true
+        ordering: true,
+        columnDefs: [{ orderable: false, searchable: false, targets: 0 }]
+    });
+
+    function updateSessionsBulkDeleteState() {
+        var anyChecked = $('#sessions-table .row-checkbox:checked').length > 0;
+        $('#bulk-delete-btn').prop('disabled', !anyChecked);
+    }
+
+    $('#select-all-sessions').on('change', function () {
+        var checked = this.checked;
+        sessionsTable.rows({ search: 'applied' }).every(function () {
+            $(this.node()).find('.row-checkbox').prop('checked', checked);
+        });
+        updateSessionsBulkDeleteState();
+    });
+
+    $(document).on('change', '#sessions-table .row-checkbox', updateSessionsBulkDeleteState);
+
+    $('#bulk-delete-btn').on('click', function () {
+        var count = $('#sessions-table .row-checkbox:checked').length;
+        if (count === 0) return;
+        $('#bulkDeleteSessionsCount').text(count);
+        $('#bulkDeleteSessionsConfirmModal').modal('show');
+    });
+
+    $('#bulkDeleteSessionsConfirmButton').on('click', function () {
+        var $container = $('#bulk-delete-sessions-ids-container').empty();
+        $('#sessions-table .row-checkbox:checked').each(function () {
+            $container.append('<input type="hidden" name="ids[]" value="' + $(this).val() + '">');
+        });
+        $('#bulk-delete-sessions-form').submit();
     });
 </script>
 @endsection

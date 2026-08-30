@@ -74,6 +74,61 @@ class AuditController extends Controller
         return view('admin.audit.show', compact('activity', 'oldData', 'newData', 'metadata'));
     }
 
+    /**
+     * Permanently deletes the selected activity_logs rows. Only reachable
+     * behind the same admin gate as the rest of this controller. The
+     * deletion itself is logged as a Security/danger event (with the
+     * deleted ids kept in metadata) so removing audit records doesn't
+     * itself go unaudited.
+     */
+    public function bulkDelete(Request $request)
+    {
+        $ids = array_values(array_filter((array) $request->input('ids', []), 'is_numeric'));
+
+        if (empty($ids)) {
+            return back()->with('error', trans('No records were selected.'));
+        }
+
+        $count = DB::table('activity_logs')->whereIn('id', $ids)->delete();
+
+        AuditService::log([
+            'action'      => 'security',
+            'severity'    => 'danger',
+            'category'    => 'Security',
+            'module'      => 'Audit Log',
+            'description' => "Manually deleted {$count} activity log record(s).",
+            'metadata'    => ['deleted_ids' => $ids],
+        ]);
+
+        return back()->with('success', trans(':count record(s) deleted.', ['count' => $count]));
+    }
+
+    /**
+     * Same as bulkDelete() above, but for login_sessions rows on the
+     * Live Sessions page.
+     */
+    public function bulkDeleteSessions(Request $request)
+    {
+        $ids = array_values(array_filter((array) $request->input('ids', []), 'is_numeric'));
+
+        if (empty($ids)) {
+            return back()->with('error', trans('No sessions were selected.'));
+        }
+
+        $count = DB::table('login_sessions')->whereIn('id', $ids)->delete();
+
+        AuditService::log([
+            'action'      => 'security',
+            'severity'    => 'danger',
+            'category'    => 'Security',
+            'module'      => 'Audit Log',
+            'description' => "Manually deleted {$count} session record(s).",
+            'metadata'    => ['deleted_ids' => $ids],
+        ]);
+
+        return back()->with('success', trans(':count session(s) deleted.', ['count' => $count]));
+    }
+
     public function sessions()
     {
         $timeout = config('audit.session_timeout_minutes', 15);
