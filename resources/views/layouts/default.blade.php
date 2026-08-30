@@ -903,13 +903,20 @@
                         <p>{{ __('Reports') }}</p>
                     </a>
                 </li>
-                <li>
-                    <a href="{{ url('users') }}">
-                        <i class="ui icon user circle outline"></i>
-                        <p>{{ __('Users') }}</p>
+                  <li class="sidebar-dropdown">
+                    <a href="#contact" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
+                        <i class="ui icon calendar alternate outline"></i>
+                        <p>{{ __('Contact Manager') }}</p>
                     </a>
-                </li>
-             <li>
+                    <ul class="collapse list-unstyled sidebar-submenu" id="contact">
+                        <!-- <li>
+                            <a href="{{ url('schedules') }}">
+                                <i class="ui icon list"></i>
+                                <p>{{ __('Schedules') }}</p>
+                            </a>
+                        </li> -->
+                      
+                         <li>
                <a href="{{ url('meetings') }}">
                    <i class="ui icon video"></i>
                    <p>{{ __('Meetings') }}</p>
@@ -921,13 +928,7 @@
                      <p>{{ __('Emails') }}</p>
                  </a>
              </li>
-                <li>
-                    <a href="{{ url('payroll') }}">
-                        <i class="ui icon money bill alternate outline"></i>
-                        <p>{{ __('Payroll') }}</p>
-                    </a>
-                </li>
-                <li>
+              <li>
                     <a href="{{ route('chat') }}" class="chat-menu-link1">
                         <div class="chat-icon-wrapper1">
                             <i class="ui comments icon"></i>
@@ -936,12 +937,57 @@
                         <span class="chat-text1">{{ __('Chat') }}</span>
                     </a>
                 </li>
+                    </ul>
+                </li>
+            
                 <li>
-                    <a href="{{ url('settings') }}">
-                        <i class="ui icon cog"></i>
-                        <p>{{ __('Settings') }}</p>
+                    <a href="{{ url('payroll') }}">
+                        <i class="ui icon money bill alternate outline"></i>
+                        <p>{{ __('Payroll') }}</p>
                     </a>
                 </li>
+               
+                  <li class="sidebar-dropdown">
+                    <a href="#settings" data-toggle="collapse" aria-expanded="false" class="dropdown-toggle">
+                        <i class="ui icon calendar alternate outline"></i>
+                        <p>{{ __('Settings') }}</p>
+                    </a>
+                    <ul class="collapse list-unstyled sidebar-submenu" id="settings">
+                        <!-- <li>
+                            <a href="{{ url('schedules') }}">
+                                <i class="ui icon list"></i>
+                                <p>{{ __('Schedules') }}</p>
+                            </a>
+                        </li> -->
+                        <li>
+                    <a href="{{ url('users') }}">
+                        <i class="ui icon user circle outline"></i>
+                        <p>{{ __('Users') }}</p>
+                    </a>
+                         </li>
+                        <li>
+                            <a href="{{ route('audit.index') }}">
+                                <i class="ui icon clipboard list"></i>
+                                <p>{{ __('Audit Logs') }}</p>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('audit.sessions') }}">
+                                <i class="ui icon clock outline"></i>
+                                <p>{{ __('Audit Sessions') }}</p>
+                            </a>
+                        </li>
+                       <li>
+                    <a href="{{ url('settings') }}">
+                        <i class="ui icon cog"></i>
+                        <p>{{ __('System Settings') }}</p>
+                    </a>
+                </li>
+                       
+                    </ul>
+                </li>
+
+                
             </ul>
         </nav>
 

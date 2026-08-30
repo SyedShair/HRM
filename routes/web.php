@@ -39,6 +39,8 @@ use App\Http\Controllers\Admin\FieldsController;
 use App\Http\Controllers\Admin\ExportsController;
 use App\Http\Controllers\Admin\ImportsController;
 use App\Http\Controllers\Admin\EmailController;
+use App\Http\Controllers\Admin\AuditController;
+
 
 use App\Http\Controllers\Personal\PersonalDashboardController;
 use App\Http\Controllers\Personal\PersonalProfileController;
@@ -118,6 +120,14 @@ Route::group(['middleware' => 'auth'], function () {
     Route::group(['middleware' => 'checkstatus'], function () {
 
         Route::group(['middleware' => 'admin'], function () {
+
+
+ Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+Route::get('audit/sessions/live', [AuditController::class, 'sessions'])->name('audit.sessions');
+Route::get('audit/export/{format}', [AuditController::class, 'export'])->name('audit.export');
+Route::get('audit/{id}', [AuditController::class, 'show'])->name('audit.show');
+
+
 
             Route::get('/contract/print/{id}', [ContractController::class, 'printContract'])->name('contract.print');
 
