@@ -66,10 +66,20 @@
 @section('content')
 <div class="container-fluid">
 
+    @if(session('success'))
+        <div class="ui positive message"><i class="close icon"></i>{{ session('success') }}</div>
+    @endif
+    @if(session('error'))
+        <div class="ui negative message"><i class="close icon"></i>{{ session('error') }}</div>
+    @endif
+
     <div class="row">
         <div class="col-md-12">
             <h2 class="page-title">
                 {{ __('Audit Log') }}
+                <button type="button" id="bulk-delete-btn" class="ui red basic button mini offsettop5 float-right" disabled>
+                    <i class="ui icon trash alternate outline"></i> {{ __('Delete Selected') }}
+                </button>
                 <a href="{{ route('audit.sessions') }}" class="ui basic button mini offsettop5 float-right">
                     <i class="ui icon user circle"></i> {{ __('Live Sessions') }}
                 </a>
@@ -167,9 +177,10 @@
                     </form>
 
                     <div class="table-responsive-wrap" style="overflow-x:auto;">
-                        <table class="audit-table" id="audit-table" width="100%" data-order='[[ 0, "desc" ]]'>
+                        <table class="audit-table" id="audit-table" width="100%" data-order='[[ 1, "desc" ]]'>
                             <thead>
                                 <tr>
+                                    <th style="width:36px;"><input type="checkbox" id="select-all-audit"></th>
                                     <th>{{ __('Date/Time') }}</th>
                                     <th>{{ __('User') }}</th>
                                     <th>{{ __('Role') }}</th>
@@ -185,6 +196,7 @@
                             <tbody>
                                 @forelse($activities as $a)
                                     <tr onclick="window.location='{{ route('audit.show', $a->id) }}'">
+                                        <td onclick="event.stopPropagation()"><input type="checkbox" class="row-checkbox" value="{{ $a->id }}"></td>
                                         <td>{{ \Carbon\Carbon::parse($a->created_at)->format('d M Y H:i:s') }}</td>
                                         <td>{{ $a->user_name ?? __('Guest') }}</td>
                                         <td>{{ $a->role ?? '—' }}</td>
@@ -197,13 +209,44 @@
                                         <td>{{ $a->ip_address }}</td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="10" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No activity found for these filters.') }}</td></tr>
+                                    <tr><td colspan="11" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No activity found for these filters.') }}</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
 
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= BULK DELETE FORM (hidden - populated by JS on confirm) ================= -->
+    <form id="bulk-delete-form" method="POST" action="{{ route('audit.bulkDelete') }}" style="display:none;">
+        @csrf
+        <div id="bulk-delete-ids-container"></div>
+    </form>
+
+    <!-- ================= BULK DELETE CONFIRMATION MODAL ================= -->
+    <div class="ui basic modal" id="bulkDeleteConfirmModal">
+        <div class="ui icon header" style="border:none;">
+            <i class="trash alternate outline icon" style="color:#d93025;"></i>
+            {{ __('Delete Selected Records') }}
+        </div>
+        <div class="content" style="text-align:center; color:#e5e7eb;">
+            <p style="font-size:15px; margin:0;">
+                {{ __('Are you sure you want to permanently delete') }}
+                <strong id="bulkDeleteCount" style="color:#fff;"></strong> {{ __('selected record(s)?') }}
+            </p>
+            <p style="font-size:12px; color:#9ca3af; margin-top:8px;">
+                {{ __('This action cannot be undone.') }}
+            </p>
+        </div>
+        <div class="actions" style="text-align:center; border:none; padding-bottom:20px;">
+            <div class="ui red basic inverted cancel button">
+                <i class="times icon"></i> {{ __('Cancel') }}
+            </div>
+            <div class="ui red inverted ok button" id="bulkDeleteConfirmButton">
+                <i class="checkmark icon"></i> {{ __('Yes, Delete') }}
             </div>
         </div>
     </div>
@@ -215,12 +258,51 @@
 <script>
     $('.audit-filters .ui.dropdown').dropdown();
 
-    $('#audit-table').DataTable({
+    var auditTable = $('#audit-table').DataTable({
         responsive: true,
         pageLength: 25,
         lengthChange: true,
         searching: true,
-        ordering: true
+        ordering: true,
+        columnDefs: [{ orderable: false, searchable: false, targets: 0 }]
+    });
+
+    function updateBulkDeleteState() {
+        var anyChecked = $('.row-checkbox:checked').length > 0;
+        $('#bulk-delete-btn').prop('disabled', !anyChecked);
+    }
+
+    // "Select all" only selects rows currently matching the DataTables
+    // search/filter (not rows hidden by it) - matches what a user
+    // filtering the table down would actually expect "select all" to mean.
+    $('#select-all-audit').on('change', function () {
+        var checked = this.checked;
+        auditTable.rows({ search: 'applied' }).every(function () {
+            $(this.node()).find('.row-checkbox').prop('checked', checked);
+        });
+        updateBulkDeleteState();
+    });
+
+    // Clicking a row checkbox must not also trigger the row's own
+    // onclick (which navigates to the activity detail page).
+    $(document).on('click', '.row-checkbox', function (e) {
+        e.stopPropagation();
+    });
+    $(document).on('change', '.row-checkbox', updateBulkDeleteState);
+
+    $('#bulk-delete-btn').on('click', function () {
+        var count = $('.row-checkbox:checked').length;
+        if (count === 0) return;
+        $('#bulkDeleteCount').text(count);
+        $('#bulkDeleteConfirmModal').modal('show');
+    });
+
+    $('#bulkDeleteConfirmButton').on('click', function () {
+        var $container = $('#bulk-delete-ids-container').empty();
+        $('.row-checkbox:checked').each(function () {
+            $container.append('<input type="hidden" name="ids[]" value="' + $(this).val() + '">');
+        });
+        $('#bulk-delete-form').submit();
     });
 </script>
 @endsection
