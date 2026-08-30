@@ -122,10 +122,12 @@ Route::group(['middleware' => 'auth'], function () {
         Route::group(['middleware' => 'admin'], function () {
 
 
- Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
+Route::get('audit', [AuditController::class, 'index'])->name('audit.index');
 Route::get('audit/sessions/live', [AuditController::class, 'sessions'])->name('audit.sessions');
 Route::get('audit/export/{format}', [AuditController::class, 'export'])->name('audit.export');
 Route::get('audit/{id}', [AuditController::class, 'show'])->name('audit.show');
+
+
 
 
 
