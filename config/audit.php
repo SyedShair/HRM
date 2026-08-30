@@ -62,6 +62,15 @@ return [
     // sessions view.
     'session_timeout_minutes' => env('AUDIT_SESSION_TIMEOUT', 15),
 
+    // The Audit Log and Live Sessions pages render a full table and let
+    // DataTables.js handle paging/searching client-side (matching every
+    // other list page in this app), rather than Laravel pagination. That
+    // means the whole filtered result set is sent to the browser in one
+    // response, so this caps how many rows that can ever be - narrow
+    // down with the date range / filters above the table to see further
+    // back than this limit covers.
+    'dashboard_row_limit' => env('AUDIT_DASHBOARD_ROW_LIMIT', 1000),
+
     // fnmatch()-style patterns (matched against the request path) that
     // are never logged as page-view activity - static assets and the
     // audit dashboard's own pages, so browsing the dashboard doesn't

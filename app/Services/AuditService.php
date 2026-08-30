@@ -35,10 +35,7 @@ class AuditService
             $defaults = [
                 'user_id'          => $user->id ?? null,
                 'user_name'        => $user->name ?? null,
-                // This app's existing users table uses acc_type as its
-                // role field (see table::users()'s select list) -
-                // reused here rather than inventing a parallel concept.
-                'role'             => $user->acc_type ?? null,
+                'role'             => self::resolveRoleName($user),
                 'category'         => 'Other',
                 'action'           => 'other',
                 'severity'         => 'info',
@@ -76,6 +73,50 @@ class AuditService
             // docblock. The calling request must continue normally.
             Log::warning('[Audit] failed to write activity log: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Resolves the user's actual role NAME (e.g. "HR Manager") from
+     * users_roles via users.role_id, rather than the raw numeric
+     * role_id or the broad acc_type ("admin"/"employee"). Falls back to
+     * acc_type only when the user has no custom role_id set, so 'role'
+     * is never blank for a logged-in user.
+     *
+     * ASSUMPTION: users_roles's display-name column is called `role` -
+     * matching this app's consistent "table concept = column name"
+     * convention seen everywhere else (tbl_form_department.department,
+     * tbl_form_jobtitle.jobtitle, tbl_form_leavegroup.leavegroup). If
+     * users_roles actually names it something else (e.g. `name`,
+     * `role_name`), change the ->value('role') call below to match.
+     *
+     * @var array<int, string|null> per-request cache so N audit rows
+     *      for the same logged-in user don't each re-query the role.
+     */
+    protected static array $roleNameCache = [];
+
+    protected static function resolveRoleName($user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        if (!empty($user->role_id)) {
+            if (!array_key_exists($user->role_id, self::$roleNameCache)) {
+                try {
+                    self::$roleNameCache[$user->role_id] = DB::table('users_roles')
+                        ->where('id', $user->role_id)
+                        ->value('role');
+                } catch (\Throwable $e) {
+                    self::$roleNameCache[$user->role_id] = null;
+                }
+            }
+
+            if (self::$roleNameCache[$user->role_id]) {
+                return self::$roleNameCache[$user->role_id];
+            }
+        }
+
+        return $user->acc_type ?? null;
     }
 
     /**

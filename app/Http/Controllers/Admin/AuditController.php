@@ -35,7 +35,16 @@ class AuditController extends Controller
 
         $this->applyDateRange($query, $request);
 
-        $activities = $query->orderByDesc('created_at')->paginate(25)->withQueryString();
+        // Switched from ->paginate() to a capped ->get(): the view uses
+        // DataTables.js for client-side paging/searching (matching every
+        // other list page in this app), which needs the full filtered
+        // result set in one response rather than one page at a time.
+        // The row cap (config('audit.dashboard_row_limit')) is a safety
+        // net against sending an unbounded result set to the browser -
+        // narrow the filters above to see further back than it covers.
+        $activities = $query->orderByDesc('created_at')
+            ->limit(config('audit.dashboard_row_limit', 1000))
+            ->get();
 
         $stats = $this->buildStats();
 
@@ -78,9 +87,22 @@ class AuditController extends Controller
             ->where('last_activity_at', '<', $cutoff)
             ->update(['status' => 'expired', 'updated_at' => now()]);
 
-        $sessions = DB::table('login_sessions')
-            ->orderByDesc('last_activity_at')
-            ->paginate(25);
+        // TEMPORARY: the join to users_roles assumed a `role` column
+        // that doesn't actually exist (confirmed by the 1054 error this
+        // caused), so it's removed for now - showing acc_type only
+        // until the real column name is confirmed. Once known, add
+        // back: ->leftJoin('users_roles as ur', 'ur.id', '=', 'u.role_id')
+        // and 'ur.<real_column> as role_name' in the select below.
+        $sessions = DB::table('login_sessions as ls')
+            ->leftJoin('users as u', 'u.id', '=', 'ls.user_id')
+            ->select(
+                'ls.*',
+                'u.name as user_name',
+                'u.acc_type as acc_type'
+            )
+            ->orderByDesc('ls.last_activity_at')
+            ->limit(config('audit.dashboard_row_limit', 1000))
+            ->get();
 
         return view('admin.audit.sessions', compact('sessions', 'timeout'));
     }

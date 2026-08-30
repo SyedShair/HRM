@@ -167,7 +167,7 @@
                     </form>
 
                     <div class="table-responsive-wrap" style="overflow-x:auto;">
-                        <table class="audit-table">
+                        <table class="audit-table" id="audit-table" width="100%" data-order='[[ 0, "desc" ]]'>
                             <thead>
                                 <tr>
                                     <th>{{ __('Date/Time') }}</th>
@@ -203,10 +203,6 @@
                         </table>
                     </div>
 
-                    <div style="margin-top:16px;">
-                        {{ $activities->links() }}
-                    </div>
-
                 </div>
             </div>
         </div>
@@ -218,5 +214,13 @@
 @section('scripts')
 <script>
     $('.audit-filters .ui.dropdown').dropdown();
+
+    $('#audit-table').DataTable({
+        responsive: true,
+        pageLength: 25,
+        lengthChange: true,
+        searching: true,
+        ordering: true
+    });
 </script>
 @endsection

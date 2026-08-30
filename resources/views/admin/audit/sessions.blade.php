@@ -41,10 +41,11 @@
         <div class="col-md-12">
             <div class="box box-success">
                 <div class="box-body" style="overflow-x:auto;">
-                    <table class="sessions-table">
+                    <table class="sessions-table" id="sessions-table" width="100%" data-order='[[ 3, "desc" ]]'>
                         <thead>
                             <tr>
-                                <th>{{ __('User ID') }}</th>
+                                <th>{{ __('User') }}</th>
+                                <th>{{ __('Role') }}</th>
                                 <th>{{ __('Login Time') }}</th>
                                 <th>{{ __('Last Activity') }}</th>
                                 <th>{{ __('Logout Time') }}</th>
@@ -57,7 +58,8 @@
                         <tbody>
                             @forelse($sessions as $s)
                                 <tr>
-                                    <td>{{ $s->user_id }}</td>
+                                    <td>{{ $s->user_name ?? ('User #'.$s->user_id) }}</td>
+                                    <td>{{ $s->role_name ?? $s->acc_type ?? '—' }}</td>
                                     <td>{{ $s->login_at ? \Carbon\Carbon::parse($s->login_at)->format('d M Y H:i:s') : '—' }}</td>
                                     <td>{{ $s->last_activity_at ? \Carbon\Carbon::parse($s->last_activity_at)->diffForHumans() : '—' }}</td>
                                     <td>{{ $s->logout_at ? \Carbon\Carbon::parse($s->logout_at)->format('d M Y H:i:s') : '—' }}</td>
@@ -67,18 +69,26 @@
                                     <td><span class="badge-status badge-{{ $s->status }}">{{ $s->status }}</span></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="8" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No sessions recorded yet.') }}</td></tr>
+                                <tr><td colspan="9" style="text-align:center; padding:24px; color:#9ca3af;">{{ __('No sessions recorded yet.') }}</td></tr>
                             @endforelse
                         </tbody>
                     </table>
-
-                    <div style="margin-top:16px;">
-                        {{ $sessions->links() }}
-                    </div>
                 </div>
             </div>
         </div>
     </div>
 
 </div>
+@endsection
+
+@section('scripts')
+<script>
+    $('#sessions-table').DataTable({
+        responsive: true,
+        pageLength: 25,
+        lengthChange: true,
+        searching: true,
+        ordering: true
+    });
+</script>
 @endsection
