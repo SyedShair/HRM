@@ -72,9 +72,9 @@
                                     <td><input type="checkbox" class="row-checkbox" value="{{ $s->id }}"></td>
                                     <td>{{ $s->user_name ?? ('User #'.$s->user_id) }}</td>
                                     <td>{{ $s->role_name ?? $s->acc_type ?? '—' }}</td>
-                                    <td>{{ $s->login_at ? \Carbon\Carbon::parse($s->login_at)->format('d M Y H:i:s') : '—' }}</td>
-                                    <td>{{ $s->last_activity_at ? \Carbon\Carbon::parse($s->last_activity_at)->diffForHumans() : '—' }}</td>
-                                    <td>{{ $s->logout_at ? \Carbon\Carbon::parse($s->logout_at)->format('d M Y H:i:s') : '—' }}</td>
+                                    <td>{{ $s->login_at ? \Carbon\Carbon::parse($s->login_at, config('audit.timezone', 'Europe/London'))->format('d M Y H:i:s') : '—' }}</td>
+                                    <td>{{ $s->last_activity_at ? \Carbon\Carbon::parse($s->last_activity_at, config('audit.timezone', 'Europe/London'))->diffForHumans() : '—' }}</td>
+                                    <td>{{ $s->logout_at ? \Carbon\Carbon::parse($s->logout_at, config('audit.timezone', 'Europe/London'))->format('d M Y H:i:s') : '—' }}</td>
                                     <td>{{ $s->ip_address }}</td>
                                     <td>{{ $s->browser }}</td>
                                     <td>{{ $s->device }}</td>

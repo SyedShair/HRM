@@ -54,14 +54,15 @@ class TrackUserActivity
             // work regardless of exactly how the login/OTP flow
             // completes, without needing to touch LoginController.
             $sessionId = $request->session()->getId();
+            $tz = config('audit.timezone', 'Europe/London');
 
             $updated = DB::table('login_sessions')
                 ->where('session_id', $sessionId)
                 ->whereNull('logout_at')
                 ->update([
-                    'last_activity_at' => now(),
+                    'last_activity_at' => now($tz),
                     'status'           => 'online',
-                    'updated_at'       => now(),
+                    'updated_at'       => now($tz),
                 ]);
 
             if (!$updated) {
@@ -72,15 +73,15 @@ class TrackUserActivity
                     'session_id'       => $sessionId,
                     // Best-effort - the true login moment may have been
                     // slightly earlier if this is the self-heal path.
-                    'login_at'         => now(),
-                    'last_activity_at' => now(),
+                    'login_at'         => now($tz),
+                    'last_activity_at' => now($tz),
                     'ip_address'       => $request->ip(),
                     'user_agent'       => $request->userAgent(),
                     'browser'          => $ua['browser'],
                     'device'           => $ua['device'],
                     'status'           => 'online',
-                    'created_at'       => now(),
-                    'updated_at'       => now(),
+                    'created_at'       => now($tz),
+                    'updated_at'       => now($tz),
                 ]);
             }
         } catch (\Throwable $e) {

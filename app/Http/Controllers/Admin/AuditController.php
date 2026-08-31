@@ -132,7 +132,8 @@ class AuditController extends Controller
     public function sessions()
     {
         $timeout = config('audit.session_timeout_minutes', 15);
-        $cutoff = now()->subMinutes($timeout);
+        $tz = config('audit.timezone', 'Europe/London');
+        $cutoff = now($tz)->subMinutes($timeout);
 
         // Lazily flip stale "online" rows to "expired" whenever this
         // page is viewed - no scheduled job required for this to stay
@@ -140,7 +141,7 @@ class AuditController extends Controller
         DB::table('login_sessions')
             ->whereNull('logout_at')
             ->where('last_activity_at', '<', $cutoff)
-            ->update(['status' => 'expired', 'updated_at' => now()]);
+            ->update(['status' => 'expired', 'updated_at' => now($tz)]);
 
         // TEMPORARY: the join to users_roles assumed a `role` column
         // that doesn't actually exist (confirmed by the 1054 error this
@@ -201,7 +202,7 @@ class AuditController extends Controller
     {
         $headers = [
             'Content-Type'        => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="audit-log-'.now()->format('Ymd_His').'.csv"',
+            'Content-Disposition' => 'attachment; filename="audit-log-'.now(config('audit.timezone', 'Europe/London'))->format('Ymd_His').'.csv"',
         ];
 
         return response()->stream(function () use ($rows) {
@@ -231,11 +232,13 @@ class AuditController extends Controller
         }
 
         if ($request->filled('range')) {
+            $tz = config('audit.timezone', 'Europe/London');
+
             match ($request->range) {
-                'today'     => $query->whereDate('created_at', today()),
-                'yesterday' => $query->whereDate('created_at', today()->subDay()),
-                'week'      => $query->where('created_at', '>=', now()->startOfWeek()),
-                'month'     => $query->where('created_at', '>=', now()->startOfMonth()),
+                'today'     => $query->whereDate('created_at', today($tz)),
+                'yesterday' => $query->whereDate('created_at', today($tz)->subDay()),
+                'week'      => $query->where('created_at', '>=', now($tz)->startOfWeek()),
+                'month'     => $query->where('created_at', '>=', now($tz)->startOfMonth()),
                 default     => null,
             };
         }
@@ -243,16 +246,20 @@ class AuditController extends Controller
 
     protected function buildStats(): array
     {
-        $today = today();
+        $today = today(config('audit.timezone', 'Europe/London'));
 
         return [
             'total_today'   => DB::table('activity_logs')->whereDate('created_at', $today)->count(),
             'logins_today'  => DB::table('activity_logs')->whereDate('created_at', $today)->where('action', 'login')->count(),
             'logouts_today' => DB::table('activity_logs')->whereDate('created_at', $today)->where('action', 'logout')->count(),
             'failed_logins' => DB::table('failed_logins')->whereDate('attempted_at', $today)->count(),
-            'creates_today' => DB::table('activity_logs')->whereDate('created_at', $today)->where('action', 'create')->count(),
+            // Includes bulk_create/bulk_delete (see QueryAuditor's
+            // multi-row insert/delete handling) so a batch operation
+            // isn't invisible to these counts just because its action
+            // name differs from the singular 'create'/'delete'.
+            'creates_today' => DB::table('activity_logs')->whereDate('created_at', $today)->whereIn('action', ['create', 'bulk_create'])->count(),
             'updates_today' => DB::table('activity_logs')->whereDate('created_at', $today)->where('action', 'update')->count(),
-            'deletes_today' => DB::table('activity_logs')->whereDate('created_at', $today)->where('action', 'delete')->count(),
+            'deletes_today' => DB::table('activity_logs')->whereDate('created_at', $today)->whereIn('action', ['delete', 'bulk_delete'])->count(),
             'online_now'    => DB::table('login_sessions')->where('status', 'online')->whereNull('logout_at')->count(),
         ];
     }
