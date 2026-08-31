@@ -20,7 +20,8 @@ class PruneAuditLogs extends Command
             return self::SUCCESS;
         }
 
-        $cutoff = now()->subDays($days);
+        $tz = config('audit.timezone', 'Europe/London');
+        $cutoff = now($tz)->subDays($days);
 
         $deletedLogs = DB::table('activity_logs')->where('created_at', '<', $cutoff)->delete();
         $deletedSessions = DB::table('login_sessions')->where('created_at', '<', $cutoff)->delete();
@@ -37,8 +38,8 @@ class PruneAuditLogs extends Command
                 'category'    => 'Security',
                 'module'      => 'Audit Retention',
                 'description' => "Pruned audit records older than {$days} days (logs: {$deletedLogs}, sessions: {$deletedSessions}, failed logins: {$deletedFailed}).",
-                'created_at'  => now(),
-                'updated_at'  => now(),
+                'created_at'  => now($tz),
+                'updated_at'  => now($tz),
             ]);
         } catch (\Throwable $e) {
             // deliberately swallowed - see fail-safe logging note above.

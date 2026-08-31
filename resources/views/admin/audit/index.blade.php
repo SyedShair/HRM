@@ -197,7 +197,7 @@
                                 @forelse($activities as $a)
                                     <tr onclick="window.location='{{ route('audit.show', $a->id) }}'">
                                         <td onclick="event.stopPropagation()"><input type="checkbox" class="row-checkbox" value="{{ $a->id }}"></td>
-                                        <td>{{ \Carbon\Carbon::parse($a->created_at)->format('d M Y H:i:s') }}</td>
+                                        <td>{{ \Carbon\Carbon::parse($a->created_at, config('audit.timezone', 'Europe/London'))->format('d M Y H:i:s') }}</td>
                                         <td>{{ $a->user_name ?? __('Guest') }}</td>
                                         <td>{{ $a->role ?? '—' }}</td>
                                         <td>{{ $a->category }}</td>

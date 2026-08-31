@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
+use Carbon\Carbon;
+
 use App\Services\QueryAuditor;
 use App\Services\AuditService;
 use App\Services\UserAgentParser;
@@ -37,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Custom field validation rule
         Validator::extend('alpha_dash_space', function ($attribute, $value) {
-            // This will only accept alpha, numbers, spaces, hyphens and underscores
+            // Accept alpha, numbers, spaces, hyphens and underscores
             return preg_match('/^[\pL\d\s\-\_]+$/u', $value);
         });
 
@@ -83,43 +85,23 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Record successful login.
+     *
+     * IMPORTANT:
+     * Do NOT create login_sessions here.
+     *
+     * TrackUserActivity should be the only writer of login_sessions
+     * because the session ID can be regenerated immediately after login.
      */
     protected function recordAuditLogin(Login $event): void
     {
         try {
-            $user = $event->user;
-
-            $sessionId = request()->session()->getId();
-
-            $ua = UserAgentParser::parse(
-                request()->userAgent()
-            );
-
-            DB::table('login_sessions')->insert([
-                'user_id'          => $user->id,
-                'session_id'       => $sessionId,
-                'login_at'         => now(),
-                'last_activity_at' => now(),
-                'ip_address'       => request()->ip(),
-                'user_agent'       => request()->userAgent(),
-                'browser'          => $ua['browser'],
-                'device'           => $ua['device'],
-                'status'           => 'online',
-                'created_at'       => now(),
-                'updated_at'       => now(),
-            ]);
-
             AuditService::log([
                 'action'      => 'login',
                 'severity'    => 'success',
                 'category'    => 'Authentication',
                 'module'      => 'Authentication',
                 'description' => 'User logged in',
-                'metadata'    => [
-                    'session_id' => $sessionId,
-                ],
             ]);
-
         } catch (\Throwable $e) {
             Log::warning(
                 '[Audit] login tracking failed: ' .
@@ -134,6 +116,8 @@ class AppServiceProvider extends ServiceProvider
     protected function recordAuditLogout(Logout $event): void
     {
         try {
+            $tz = config('audit.timezone', 'Europe/London');
+
             $sessionId = request()->session()->getId();
 
             $session = DB::table('login_sessions')
@@ -142,17 +126,23 @@ class AppServiceProvider extends ServiceProvider
                 ->orderByDesc('id')
                 ->first();
 
+            /*
+             * login_at comes from the database as a string.
+             * Parse it explicitly before calculating the duration.
+             */
             $duration = $session
-                ? now()->diffInSeconds($session->login_at)
+                ? now($tz)->diffInSeconds(
+                    Carbon::parse($session->login_at, $tz)
+                )
                 : null;
 
             DB::table('login_sessions')
                 ->where('session_id', $sessionId)
                 ->whereNull('logout_at')
                 ->update([
-                    'logout_at'  => now(),
+                    'logout_at'  => now($tz),
                     'status'     => 'offline',
-                    'updated_at' => now(),
+                    'updated_at' => now($tz),
                 ]);
 
             AuditService::log([
@@ -183,6 +173,8 @@ class AppServiceProvider extends ServiceProvider
     protected function recordAuditFailedLogin(Failed $event): void
     {
         try {
+            $tz = config('audit.timezone', 'Europe/London');
+
             $ua = UserAgentParser::parse(
                 request()->userAgent()
             );
@@ -199,9 +191,9 @@ class AppServiceProvider extends ServiceProvider
                 'browser'        => $ua['browser'],
                 'device'         => $ua['device'],
                 'failure_reason' => 'Invalid credentials',
-                'attempted_at'   => now(),
-                'created_at'     => now(),
-                'updated_at'     => now(),
+                'attempted_at'   => now($tz),
+                'created_at'     => now($tz),
+                'updated_at'     => now($tz),
             ]);
 
             AuditService::log([

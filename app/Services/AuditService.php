@@ -55,8 +55,8 @@ class AuditService
                 'old_data'         => null,
                 'new_data'         => null,
                 'metadata'         => null,
-                'created_at'       => now(),
-                'updated_at'       => now(),
+                'created_at'       => now(config('audit.timezone', 'Europe/London')),
+                'updated_at'       => now(config('audit.timezone', 'Europe/London')),
             ];
 
             $row = array_merge($defaults, $attributes);

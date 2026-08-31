@@ -8,6 +8,17 @@ return [
     // switched off in a hurry.
     'enabled' => env('AUDIT_ENABLED', true),
 
+    // Timezone used for every timestamp this audit system writes and
+    // displays - login/logout times, activity timestamps, "Today"/
+    // "This Week" date-range filters. Set explicitly here rather than
+    // inherited from config('app.timezone'), because Laravel's own
+    // default for that is UTC - if this app never explicitly overrode
+    // it, every audit timestamp would be written and shown in UTC,
+    // which is a full hour off real UK wall-clock time during British
+    // Summer Time. This makes the audit system correct regardless of
+    // what config('app.timezone') happens to be set to elsewhere.
+    'timezone' => env('AUDIT_TIMEZONE', 'Europe/London'),
+
     // Tables that INSERT/UPDATE/DELETE tracking will never log - the
     // audit tables themselves (to prevent an infinite loop), plus
     // framework/system tables that produce noise with no business value.
