@@ -102,19 +102,80 @@ class QueryAuditor
     protected static function recordInsert(string $table, string $sql, array $bindings): void
     {
         $columns = self::extractInsertColumns($sql);
-        $newData = $columns ? @array_combine($columns, array_slice($bindings, 0, count($columns))) : null;
+
+        if (!$columns) {
+            AuditService::log([
+                'action'      => 'create',
+                'severity'    => 'success',
+                'category'    => AuditService::category($table),
+                'module'      => AuditService::category($table),
+                'table_name'  => $table,
+                'description' => "Created a new record in {$table} (column names unavailable)",
+            ]);
+            return;
+        }
+
+        $columnCount = count($columns);
+        $totalBindings = count($bindings);
+
+        // FIX: batch inserts (e.g. table::x()->insert([$row1, $row2, ...])
+        // - used routinely in this app, e.g. all 7 weekly_shifts rows per
+        // schedule are written in ONE insert() call) produce a single SQL
+        // statement with one VALUES group per row. This used to always
+        // zip only the FIRST $columnCount bindings against the column
+        // list, silently dropping every row after the first and logging
+        // a multi-row insert as if it were a single-row create.
+        if ($columnCount === 0 || $totalBindings % $columnCount !== 0) {
+            // Doesn't divide evenly - our column-count assumption
+            // doesn't hold for this statement (e.g. an
+            // ON DUPLICATE KEY UPDATE clause adding its own bindings).
+            // Log that an insert happened without guessing at row data.
+            AuditService::log([
+                'action'      => 'create',
+                'severity'    => 'success',
+                'category'    => AuditService::category($table),
+                'module'      => AuditService::category($table),
+                'table_name'  => $table,
+                'description' => "Created record(s) in {$table} (row data unavailable - binding count didn't cleanly divide by column count)",
+            ]);
+            return;
+        }
+
+        $rowCount = intdiv($totalBindings, $columnCount);
+
+        if ($rowCount <= 1) {
+            AuditService::log([
+                'action'      => 'create',
+                'severity'    => 'success',
+                'category'    => AuditService::category($table),
+                'module'      => AuditService::category($table),
+                'table_name'  => $table,
+                // Not knowable from a query listener for plain insert()
+                // calls - see class docblock.
+                'record_id'   => null,
+                'description' => "Created a new record in {$table}",
+                'new_data'    => array_combine($columns, array_slice($bindings, 0, $columnCount)),
+            ]);
+            return;
+        }
+
+        // Multi-row batch insert - one log entry covering every row (not
+        // just the first), with an explicit row count so this reads as
+        // the bulk operation it is rather than a mislabeled single create.
+        $rows = [];
+        for ($i = 0; $i < $rowCount; $i++) {
+            $rows[] = array_combine($columns, array_slice($bindings, $i * $columnCount, $columnCount));
+        }
 
         AuditService::log([
-            'action'      => 'create',
+            'action'      => 'bulk_create',
             'severity'    => 'success',
             'category'    => AuditService::category($table),
             'module'      => AuditService::category($table),
             'table_name'  => $table,
-            // Not knowable from a query listener for plain insert()
-            // calls - see class docblock.
-            'record_id'   => null,
-            'description' => "Created a new record in {$table}",
-            'new_data'    => $newData ?: null,
+            'description' => "Bulk-created {$rowCount} records in {$table}",
+            'new_data'    => $rows,
+            'metadata'    => ['bulk_count' => $rowCount],
         ]);
     }
 
@@ -146,7 +207,12 @@ class QueryAuditor
             'description' => $old
                 ? "Updated record #{$id} in {$table}"
                 : "Updated a record in {$table} (old values unavailable - WHERE clause too complex to safely pre-fetch)",
-            'old_data'    => $old ? array_intersect_key($old, $newValues) : null,
+            // FIX: array_intersect_key($old, []) returns [] (not null)
+            // when $newValues couldn't be parsed, which then serialised
+            // as "[]" - implying "we captured the old data and it was
+            // empty" rather than "we don't have it". Only set old_data
+            // when there are actual columns to compare against.
+            'old_data'    => ($old && $newValues) ? array_intersect_key($old, $newValues) : null,
             'new_data'    => $newValues ?: null,
             'metadata'    => $changedFields ? ['changed_fields' => $changedFields] : null,
         ]);
@@ -156,17 +222,51 @@ class QueryAuditor
     {
         $id = self::extractSimpleIdCondition($sql, $bindings);
 
+        if ($id !== null) {
+            AuditService::log([
+                'action'      => 'delete',
+                'severity'    => 'danger',
+                'category'    => AuditService::category($table),
+                'module'      => AuditService::category($table),
+                'table_name'  => $table,
+                'record_id'   => $id,
+                'description' => $old
+                    ? "Deleted record #{$id} from {$table}"
+                    : "Deleted a record from {$table} (row unavailable before delete)",
+                'old_data'    => $old,
+            ]);
+            return;
+        }
+
+        // FIX: whereIn('id', $ids)->delete() (e.g. the bulk-delete
+        // feature on the Audit Log / Live Sessions pages themselves)
+        // produces `WHERE id IN (?, ?, ?)`, which extractSimpleIdCondition()
+        // never matches (it only handles `id = ?`). This used to fall
+        // through to the generic branch below and log a whole bulk
+        // delete as "Deleted a record" (singular, no ids) - detected
+        // and reported accurately here instead.
+        $ids = self::extractIdInCondition($sql, $bindings);
+
+        if ($ids) {
+            AuditService::log([
+                'action'      => 'bulk_delete',
+                'severity'    => 'danger',
+                'category'    => AuditService::category($table),
+                'module'      => AuditService::category($table),
+                'table_name'  => $table,
+                'description' => 'Bulk-deleted '.count($ids)." record(s) from {$table}",
+                'metadata'    => ['deleted_ids' => $ids, 'bulk_count' => count($ids)],
+            ]);
+            return;
+        }
+
         AuditService::log([
             'action'      => 'delete',
             'severity'    => 'danger',
             'category'    => AuditService::category($table),
             'module'      => AuditService::category($table),
             'table_name'  => $table,
-            'record_id'   => $id,
-            'description' => $old
-                ? "Deleted record #{$id} from {$table}"
-                : "Deleted a record from {$table} (row unavailable before delete)",
-            'old_data'    => $old,
+            'description' => "Deleted record(s) from {$table} (WHERE clause too complex to identify which rows)",
         ]);
     }
 
@@ -245,6 +345,33 @@ class QueryAuditor
         }
 
         return $columns;
+    }
+
+    /**
+     * Detects a WHERE clause of the exact form `id IN (?, ?, ...)` and
+     * returns the deleted ids by taking the last N bindings, where N is
+     * the number of placeholders found. Returns null for anything else
+     * (joins, additional conditions, IN on a different column) rather
+     * than guessing.
+     */
+    protected static function extractIdInCondition(string $sql, array $bindings): ?array
+    {
+        if (!preg_match('/where\s+`?id`?\s+in\s*\(([^)]*)\)\s*$/i', trim($sql), $m)) {
+            return null;
+        }
+
+        $placeholderCount = substr_count($m[1], '?');
+
+        if ($placeholderCount === 0) {
+            return null;
+        }
+
+        $ids = array_slice($bindings, -$placeholderCount);
+
+        return array_values(array_filter(array_map(
+            fn ($v) => is_numeric($v) ? (int) $v : null,
+            $ids
+        )));
     }
 
     /**
