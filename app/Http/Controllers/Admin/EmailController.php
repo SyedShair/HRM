@@ -360,7 +360,7 @@ class EmailController extends Controller
         $subject = "Passport Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(
+            Mail::to($person->emailaddress)->cc(auth()->user()->email)->send(
                 new DocumentExpiryReminderMail(
                     $employeeName,
                     'Passport',
@@ -495,7 +495,7 @@ class EmailController extends Controller
         $subject = "Visa Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(
+            Mail::to($person->emailaddress)->cc(auth()->user()->email)->send(
                 new DocumentExpiryReminderMail(
                     $employeeName,
                     'Visa',
@@ -639,7 +639,7 @@ class EmailController extends Controller
         $subject = "Share Code Expiry Reminder - {$appName}";
 
         try {
-            Mail::to($person->emailaddress)->send(
+            Mail::to($person->emailaddress)->cc(auth()->user()->email)->send(
                 new DocumentExpiryReminderMail(
                     $employeeName,
                     'Share Code',
@@ -763,7 +763,8 @@ class EmailController extends Controller
 
             try {
 
-                Mail::to($person->emailaddress)->send(
+                Mail::to($person->emailaddress)->cc(auth()->user()->email)->send(
+                    
                     new CustomHrMail(
                         $employeeName,
                         $request->subject,
