@@ -766,7 +766,7 @@
 
                                                 $var = ($fd == $td)
                                                     ? date('M d', strtotime($l->leavefrom)) . ' - ' . date('d, Y', strtotime($l->leaveto))
-                                                    : date('M d', strtotime($l->leavefrom)) . ' - ' . date('M d, Y', strtotime($l->leaveto));
+                                                    : date('M d', strtotime($l->leavefrom)) . ' - ' . date('d, Y', strtotime($l->leaveto));
                                             @endphp
                                             {{ $var }}
                                         </td>
