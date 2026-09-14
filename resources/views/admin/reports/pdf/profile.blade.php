@@ -179,6 +179,14 @@
             <td class="label">Share Code</td>
             <td class="uppercase">{{ $p->sharecode ?? '' }}</td>
         </tr>
+<tr>
+            <td class="label">Emergency Contact</td>
+            <td class="uppercase">{{ $c->kinno ?? '' }} ( {{ $c->kinname ?? '' }} )</td>
+        </tr>
+
+
+
+
     </table>
 
     <h2 class="section">Address History (Last 5 Years)</h2>
