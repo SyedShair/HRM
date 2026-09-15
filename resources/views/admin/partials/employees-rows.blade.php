@@ -3,43 +3,123 @@
 
     /*
     |--------------------------------------------------------------------------
-    | Use calendar dates for document expiry calculations
+    | TODAY
     |--------------------------------------------------------------------------
     */
     $now = Carbon::today();
 @endphp
 
+
 @foreach($data ?? [] as $employee)
 
     @php
+
         /*
         |--------------------------------------------------------------------------
-        | VISA EXPIRY
+        | VISA ISSUE DATE
+        |--------------------------------------------------------------------------
+        */
+
+        $visaIssue = null;
+
+        if (!empty($employee->visaissuedate)) {
+            try {
+                $visaIssue = Carbon::parse(
+                    $employee->visaissuedate
+                )->startOfDay();
+            } catch (\Exception $e) {
+                $visaIssue = null;
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | VISA EXPIRY DATE
         |--------------------------------------------------------------------------
         */
 
         $end = null;
+
+        if (!empty($employee->visaend)) {
+            try {
+                $end = Carbon::parse(
+                    $employee->visaend
+                )->startOfDay();
+            } catch (\Exception $e) {
+                $end = null;
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ORIGINAL VISA DURATION
+        |--------------------------------------------------------------------------
+        |
+        | Visa Issue Date -> Visa Expiry Date
+        |
+        | Example:
+        | 14/09/2026 -> 14/03/2027
+        | = 6 months 0 days
+        |
+        */
+
+        $visaDurationMonths = null;
+        $visaDurationDays = null;
+
+        if (
+            $visaIssue &&
+            $end &&
+            $end->gte($visaIssue)
+        ) {
+
+            $visaDuration = $visaIssue->diff($end);
+
+            $visaDurationMonths =
+                ($visaDuration->y * 12) +
+                $visaDuration->m;
+
+            $visaDurationDays =
+                $visaDuration->d;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | REMAINING VISA TIME
+        |--------------------------------------------------------------------------
+        |
+        | Today -> Visa Expiry Date
+        |
+        */
+
         $months = null;
         $days = null;
         $diffDays = null;
         $expired = false;
 
-        if (!empty($employee->visaend)) {
-            try {
-                $end = Carbon::parse($employee->visaend)->startOfDay();
+        if ($end) {
 
-                $diffDays = $now->diffInDays($end, false);
+            $diffDays = $now->diffInDays(
+                $end,
+                false
+            );
 
-                if ($diffDays < 0) {
-                    $expired = true;
-                } else {
-                    $diff = $now->diff($end);
+            if ($diffDays < 0) {
 
-                    $months = ($diff->y * 12) + $diff->m;
-                    $days = $diff->d;
-                }
-            } catch (\Exception $e) {
-                $end = null;
+                $expired = true;
+
+            } else {
+
+                $diff = $now->diff($end);
+
+                $months =
+                    ($diff->y * 12) +
+                    $diff->m;
+
+                $days =
+                    $diff->d;
             }
         }
 
@@ -56,8 +136,12 @@
         $passportExpired = false;
 
         if (!empty($employee->idexpirydate)) {
+
             try {
-                $passportExpiry = Carbon::parse($employee->idexpirydate)->startOfDay();
+
+                $passportExpiry = Carbon::parse(
+                    $employee->idexpirydate
+                )->startOfDay();
 
                 $passportDiffDays = $now->diffInDays(
                     $passportExpiry,
@@ -65,16 +149,25 @@
                 );
 
                 if ($passportDiffDays < 0) {
+
                     $passportExpired = true;
+
                 } else {
-                    $passportDiff = $now->diff($passportExpiry);
+
+                    $passportDiff = $now->diff(
+                        $passportExpiry
+                    );
 
                     $passportMonths =
-                        ($passportDiff->y * 12) + $passportDiff->m;
+                        ($passportDiff->y * 12) +
+                        $passportDiff->m;
 
-                    $passportDays = $passportDiff->d;
+                    $passportDays =
+                        $passportDiff->d;
                 }
+
             } catch (\Exception $e) {
+
                 $passportExpiry = null;
             }
         }
@@ -91,7 +184,9 @@
         $sharecodeDaysLeft = null;
 
         if (!empty($employee->sharecode_expires_at)) {
+
             try {
+
                 $sharecodeExpiry = Carbon::parse(
                     $employee->sharecode_expires_at
                 )->startOfDay();
@@ -104,7 +199,9 @@
                 if ($sharecodeDaysLeft < 0) {
                     $sharecodeExpired = true;
                 }
+
             } catch (\Exception $e) {
+
                 $sharecodeExpiry = null;
             }
         }
@@ -114,16 +211,6 @@
         |--------------------------------------------------------------------------
         | RED BADGE CONDITIONS
         |--------------------------------------------------------------------------
-        |
-        | VISA:
-        |   Expired OR 3 months or less
-        |
-        | PASSPORT:
-        |   Expired OR 3 months or less
-        |
-        | SHARE CODE:
-        |   Expired OR 14 days or less
-        |
         */
 
         $visaRed =
@@ -133,6 +220,7 @@
                 ($months !== null && $months <= 3)
             );
 
+
         $passportRed =
             $passportExpiry &&
             (
@@ -140,11 +228,15 @@
                 ($passportMonths !== null && $passportMonths <= 3)
             );
 
+
         $sharecodeRed =
             $sharecodeExpiry &&
             (
                 $sharecodeExpired ||
-                ($sharecodeDaysLeft !== null && $sharecodeDaysLeft <= 14)
+                (
+                    $sharecodeDaysLeft !== null &&
+                    $sharecodeDaysLeft <= 14
+                )
             );
 
 
@@ -158,22 +250,26 @@
             $visaRed ||
             $passportRed ||
             $sharecodeRed;
+
     @endphp
 
 
     <tr class="{{ $hasRedBadge ? 'expiring-row' : '' }}">
 
+
         {{-- =========================================================
              EMPLOYEE ID
         ========================================================== --}}
+
         <td>
             {{ $employee->idno }}
         </td>
 
 
         {{-- =========================================================
-             EMPLOYEE NAME
+             EMPLOYEE
         ========================================================== --}}
+
         <td>
             {{ $employee->lastname }}, {{ $employee->firstname }}
         </td>
@@ -182,6 +278,7 @@
         {{-- =========================================================
              COMPANY
         ========================================================== --}}
+
         <td>
             {{ $employee->company }}
         </td>
@@ -190,14 +287,16 @@
         {{-- =========================================================
              DEPARTMENT
         ========================================================== --}}
+
         <td>
             {{ $employee->department }}
         </td>
 
 
         {{-- =========================================================
-             JOB POSITION
+             POSITION
         ========================================================== --}}
+
         <td>
             {{ $employee->jobposition }}
         </td>
@@ -206,6 +305,7 @@
         {{-- =========================================================
              SHARE CODE
         ========================================================== --}}
+
         <td>
 
             @if(empty($employee->sharecode))
@@ -233,19 +333,19 @@
                 </div>
 
 
-                {{-- SHARE CODE EXPIRY --}}
-
                 @if(!$sharecodeExpiry)
 
                     <span class="ui orange label">
                         Expiry Not Set
                     </span>
 
+
                 @elseif($sharecodeExpired)
 
                     <span class="ui red label">
                         Share Code Expired
                     </span>
+
 
                 @else
 
@@ -260,23 +360,31 @@
                                 );
                     @endphp
 
+
                     <span class="ui {{ $sharecodeLabel }} label">
 
                         @if($sharecodeDaysLeft == 0)
+
                             Expires Today
+
                         @else
+
                             {{ $sharecodeDaysLeft }} days left
+
                         @endif
 
                     </span>
+
 
                     <div style="
                         font-size:11px;
                         color:#777;
                         margin-top:3px;
                     ">
+
                         Expires
                         {{ $sharecodeExpiry->format('d M Y') }}
+
                     </div>
 
                 @endif
@@ -289,6 +397,7 @@
         {{-- =========================================================
              PASSPORT
         ========================================================== --}}
+
         <td>
 
             @if(!empty($employee->nationalid))
@@ -322,8 +431,6 @@
             @endif
 
 
-            {{-- PASSPORT EXPIRY --}}
-
             @if($passportExpiry)
 
                 @if($passportExpired)
@@ -332,7 +439,10 @@
                         Passport Expired
                     </span>
 
-                @elseif($passportMonths == 0 && $passportDays == 0)
+                @elseif(
+                    $passportMonths == 0 &&
+                    $passportDays == 0
+                )
 
                     <span class="ui red label">
                         Expires Today
@@ -351,10 +461,12 @@
                                 );
                     @endphp
 
+
                     <span class="ui {{ $passportLabel }} label">
 
                         {{ $passportMonths }}
                         months
+
                         {{ $passportDays }}
                         days left
 
@@ -374,16 +486,23 @@
 
 
         {{-- =========================================================
-             VISA
+             VISA EXPIRY
         ========================================================== --}}
+
         <td>
 
             @if($end)
 
+                {{-- Visa expiry date --}}
+
                 <div class="visa-expiry-date">
+
                     {{ $end->format('d M Y') }}
+
                 </div>
 
+
+                {{-- Remaining time --}}
 
                 @if($expired)
 
@@ -391,15 +510,21 @@
                         Expired
                     </span>
 
-                @elseif($months == 0 && $days == 0)
+
+                @elseif(
+                    $months == 0 &&
+                    $days == 0
+                )
 
                     <span class="ui red label">
                         Expires Today
                     </span>
 
+
                 @else
 
                     @php
+
                         $visaLabel =
                             $months > 6
                                 ? 'green'
@@ -408,16 +533,46 @@
                                         ? 'yellow'
                                         : 'red'
                                 );
+
                     @endphp
+
 
                     <span class="ui {{ $visaLabel }} label">
 
                         {{ $months }}
                         months
+
                         {{ $days }}
                         days left
 
                     </span>
+
+                @endif
+
+
+                {{-- =================================================
+                     ORIGINAL VISA DURATION
+                ================================================== --}}
+
+                @if(
+                    $visaIssue &&
+                    $visaDurationMonths !== null
+                )
+
+                    <div style="
+                        font-size:11px;
+                        color:#777;
+                        margin-top:4px;
+                    ">
+
+                        Visa duration:
+                        {{ $visaDurationMonths }}
+                        months
+
+                        {{ $visaDurationDays }}
+                        days
+
+                    </div>
 
                 @endif
 
@@ -433,8 +588,9 @@
 
 
         {{-- =========================================================
-             EMPLOYMENT STATUS
+             STATUS
         ========================================================== --}}
+
         <td>
 
             @if($employee->employmentstatus === 'Active')
@@ -457,7 +613,9 @@
         {{-- =========================================================
              ACTIONS
         ========================================================== --}}
+
         <td class="right aligned">
+
 
             {{-- Documents --}}
 
@@ -492,7 +650,7 @@
             </a>
 
 
-            {{-- Delete Profile --}}
+            {{-- Delete --}}
 
             <a href="{{ url('/profile/delete/'.$employee->reference) }}"
                class="ui circular basic icon button tiny red"
@@ -526,7 +684,7 @@
             </a>
 
 
-            {{-- QR / PDF --}}
+            {{-- QR --}}
 
             <button type="button"
                     class="ui circular basic icon button tiny teal download-qr"
