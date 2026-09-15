@@ -59,7 +59,6 @@ class EmployeesController extends Controller
 		$number1 = $emp_allActive > 0
 			? round(($emp_allArchive / $emp_allActive) * 100, 2)
 			: 0;
-
 	    return view('admin.employees', array_merge($counts, compact(
 	    	'data', 'emp_typeR', 'emp_typeT', 'emp_genderM', 'emp_genderR',
 	    	'emp_allActive', 'emp_file', 'emp_allArchive', 'companies', 'companyId', 'number1'
@@ -360,36 +359,45 @@ class EmployeesController extends Controller
 				$companyemail, $leaveprivilege, $idno, $companyId, $jobtitleId, $startdate,
 				$dateregularized, $addressEntries, $request, &$refId
 			) {
-				table::people()->insert([
-					[
-						'lastname' => $lastname,
-						'firstname' => $firstname,
-						'mi' => $mi,
-						'age' => $age,
-						'gender' => $gender,
-						'emailaddress' => $emailaddress,
-						'civilstatus' => $civilstatus,
-						'height' => $height,
-						'weight' => $weight,
-						'mobileno' => $mobileno,
-						'birthday' => $birthday,
-						'birthplace' => $birthplace,
-						'nationalid' => $nationalid,
-						'sharecode' => $sharecode,
-						'sharecode_expires_at' => $sharecodeexpiry,
-						'NI' => $ni,
-						'idissuedate' => $this->toNullableDate($request->idissuedate),
-						'idexpirydate' => $this->toNullableDate($request->idexpirydate),
-						'homeaddress' => $homeaddress,
-						'employmenttype' => $employmenttype,
-						'employmentstatus' => $employmentstatus,
-						'avatar' => $avatarPath,
-						'perhourpay' => $request->perhourpay,
-						'accountpay'  =>  $request->accountpay
-					],
+				// FIX: previously this was table::people()->insert([[ ... ]])
+				// followed by $refId = DB::getPdo()->lastInsertId(). That
+				// pulled the last-insert-id from Laravel's *default*
+				// connection PDO handle, which is not guaranteed to be the
+				// same connection/state that table::people() just inserted
+				// on, and is also vulnerable to being clobbered by a
+				// concurrent request's insert in between the two calls.
+				// insertGetId() performs the insert and reads the id back
+				// on the SAME query builder/connection in one call, so
+				// $refId is always the id of the row we just created here -
+				// which is what tbl_company_data.reference below (and thus
+				// which employee the new company_data row is attached to)
+				// depends on being correct.
+				$refId = table::people()->insertGetId([
+					'lastname' => $lastname,
+					'firstname' => $firstname,
+					'mi' => $mi,
+					'age' => $age,
+					'gender' => $gender,
+					'emailaddress' => $emailaddress,
+					'civilstatus' => $civilstatus,
+					'height' => $height,
+					'weight' => $weight,
+					'mobileno' => $mobileno,
+					'birthday' => $birthday,
+					'birthplace' => $birthplace,
+					'nationalid' => $nationalid,
+					'sharecode' => $sharecode,
+					'sharecode_expires_at' => $sharecodeexpiry,
+					'NI' => $ni,
+					'idissuedate' => $this->toNullableDate($request->idissuedate),
+					'idexpirydate' => $this->toNullableDate($request->idexpirydate),
+					'homeaddress' => $homeaddress,
+					'employmenttype' => $employmenttype,
+					'employmentstatus' => $employmentstatus,
+					'avatar' => $avatarPath,
+					'perhourpay' => $request->perhourpay,
+					'accountpay'  =>  $request->accountpay,
 				]);
-
-				$refId = DB::getPdo()->lastInsertId();
 
 				table::companydata()->insert([
 					[

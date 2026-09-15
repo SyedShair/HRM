@@ -59,13 +59,22 @@ class FieldsController extends Controller
 
       try {
         DB::transaction(function () use ($company, $request, $docStoredPaths, &$refId) {
-          table::company()->insert([
+          // FIX: previously this was table::company()->insert([...])
+          // followed by $refId = DB::getPdo()->lastInsertId(). That reads
+          // the *default* connection's PDO handle, which isn't guaranteed
+          // to reflect what table::company() just inserted (and can be
+          // clobbered by a concurrent request's insert landing between the
+          // two calls). insertGetId() inserts and reads the new id back on
+          // the same query builder/connection in one call, so $refId is
+          // always the id of the company row we just created here - which
+          // is what every uploaded document below gets tagged with via
+          // company_id. A wrong $refId here means the new company's
+          // documents silently attach to a different company.
+          $refId = table::company()->insertGetId([
             'company' => $company,
             'address' => $request->address,
             'licenceNo' => $request->licenceNo,
           ]);
-
-          $refId = DB::getPdo()->lastInsertId();
 
           $labels = $request->input('doc_label', []);
           $docRows = [];
@@ -530,7 +539,12 @@ class FieldsController extends Controller
 
       foreach ($data as $job) {
           $dept = $departmentsById->get($job->dept_code);
-          $job->department_name = $dept->department ?? null;
+          // FIX: $dept can be null (an orphaned dept_code pointing at a
+          // deleted/missing department). The old code read
+          // $dept->department directly, which triggers "attempt to read
+          // property on null" in that case. Guard it the same way
+          // company_name already is, one line below.
+          $job->department_name = optional($dept)->department;
           $job->company_name = $dept ? optional($companiesById->get($dept->company_id))->company : null;
       }
 
@@ -732,7 +746,18 @@ class FieldsController extends Controller
 
       $lt = table::leavetypes()->get();
       $lg = table::leavegroup()->where("id", $id)->first();
-      $e_id = ($lg->id == null) ? 0 : Crypt::encryptString($lg->id) ;
+
+      // FIX: previously this went straight to $lg->id == null, which
+      // fatals ("attempt to read property on null") when no leave group
+      // matches $id (deleted row, stale link, tampered URL) - $lg->id was
+      // also then passed to the view via compact('lg', ...), so the view
+      // would have blown up on $lg->leavegroup etc. too. Every other
+      // edit* method in this controller guards this the same way.
+      if (!$lg) {
+        return redirect('fields/leavetype/leave-groups')->with('error', trans("Leave group not found."));
+      }
+
+      $e_id = Crypt::encryptString($lg->id);
 
       return view('admin.edits.edit-leavegroups', compact('lg', 'lt', 'e_id'));
     }
