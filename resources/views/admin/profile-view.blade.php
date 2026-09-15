@@ -191,6 +191,7 @@ if (!empty($p->idexpirydate)) {
                                         <td><p>{{ __('National Insurance') }}</p></td>
                                         <td><p  class="uppercase">@isset($p->NI) {{ $p->NI }} @endisset</p></td>
                                     </tr>
+                                    
                                     <tr>
                                         <td><p>{{ __('Share Code') }}</p></td>
                                         <td><p  class="uppercase">@isset($p->sharecode) {{ $p->sharecode }} @endisset</p></td>
@@ -224,6 +225,10 @@ if (!empty($p->idexpirydate)) {
                                                 </span>
                                             @endif
                                         </td>
+                                    </tr>
+                                    <tr>
+                                        <td><p>{{ __('Emergency Contact ') }} </p></td>
+            <td class="uppercase" style="padding-left: 10px;"> {{ $c->kinno ?? '' }} ( {{ $c->kinname ?? '' }} )</td>
                                     </tr>
                                     <tr>
                                         <td colspan="2">
