@@ -35,6 +35,7 @@ class EmployeesController extends Controller
         }
 
         $data = $this->getEmployeesForCompany($companyId);
+
         $counts = $this->buildSummaryCounts($data);
 
         $emp_typeR = $data->where('employmenttype', 'Regular')
@@ -53,28 +54,36 @@ class EmployeesController extends Controller
 
         $emp_file = $data->count();
 
+        // Avoid division by zero.
         $number1 = $emp_allActive > 0
             ? round(($emp_allArchive / $emp_allActive) * 100, 2)
             : 0;
 
-        return view('admin.employees', array_merge(
-            $counts,
-            compact(
-                'data',
-                'emp_typeR',
-                'emp_typeT',
-                'emp_genderM',
-                'emp_genderR',
-                'emp_allActive',
-                'emp_file',
-                'emp_allArchive',
-                'companies',
-                'companyId',
-                'number1'
+        return view(
+            'admin.employees',
+            array_merge(
+                $counts,
+                compact(
+                    'data',
+                    'emp_typeR',
+                    'emp_typeT',
+                    'emp_genderM',
+                    'emp_genderR',
+                    'emp_allActive',
+                    'emp_file',
+                    'emp_allArchive',
+                    'companies',
+                    'companyId',
+                    'number1'
+                )
             )
-        ));
+        );
     }
 
+
+    /**
+     * API endpoint.
+     */
     public function api()
     {
         if (permission::permitted('employees') == 'fail') {
@@ -85,17 +94,17 @@ class EmployeesController extends Controller
 
         /*
          * IMPORTANT:
-         * Match employee records using idno instead of reference.
          *
-         * Some existing tbl_company_data.reference values are incorrect,
-         * but idno correctly identifies the employee in tbl_people.
+         * Both tbl_people and tbl_company_data contain an "id" column.
+         * Do NOT use ->get() without selecting the columns explicitly,
+         * otherwise the second "id" column can overwrite the employee ID.
          */
         $data = DB::table('tbl_people')
             ->join(
                 'tbl_company_data',
-                'tbl_people.idno',
+                'tbl_people.id',
                 '=',
-                'tbl_company_data.idno'
+                'tbl_company_data.reference'
             )
             ->select(
                 'tbl_company_data.*',
@@ -106,8 +115,9 @@ class EmployeesController extends Controller
         return response()->json($data);
     }
 
+
     /**
-     * AJAX endpoint for company filter + summary cards.
+     * AJAX endpoint for company filtering.
      */
     public function filterByCompany(Request $request)
     {
@@ -133,56 +143,68 @@ class EmployeesController extends Controller
         return response()->json(
             array_merge(
                 $counts,
-                ['rows' => $rowsHtml]
+                [
+                    'rows' => $rowsHtml
+                ]
             )
         );
     }
 
+
     /**
-     * Get employees for a company.
+     * Shared employee query.
      *
-     * IMPORTANT:
-     * We use idno to connect tbl_people and tbl_company_data.
+     * CRITICAL:
+     * tbl_people.id = tbl_company_data.reference
      *
-     * This fixes old records where:
-     *
-     * tbl_company_data.reference != tbl_people.id
-     *
-     * but:
-     *
-     * tbl_company_data.idno = tbl_people.idno
+     * tbl_people.* is selected LAST so $employee->id is always
+     * the actual employee ID from tbl_people.
      */
     private function getEmployeesForCompany($companyId)
     {
         $q = table::people()
             ->join(
                 'tbl_company_data',
-                'tbl_people.idno',
+                'tbl_people.id',
                 '=',
-                'tbl_company_data.idno'
+                'tbl_company_data.reference'
             )
             ->select(
                 'tbl_company_data.*',
                 'tbl_people.*'
             );
 
-        /*
-         * Company filtering uses the real company_id.
-         */
         if ($companyId) {
-            $q->where(
-                'tbl_company_data.company_id',
-                $companyId
-            );
+            $companyRow = table::company()
+                ->where('id', $companyId)
+                ->first();
+
+            $companyName = $companyRow
+                ? mb_strtoupper(trim($companyRow->company))
+                : null;
+
+            $q->where(function ($sub) use ($companyId, $companyName) {
+
+                $sub->where(
+                    'tbl_company_data.company_id',
+                    $companyId
+                );
+
+                if ($companyName) {
+                    $sub->orWhereRaw(
+                        'UPPER(TRIM(tbl_company_data.company)) = ?',
+                        [$companyName]
+                    );
+                }
+            });
         }
 
         return $q->get();
     }
 
+
     /**
      * Recompute summary cards.
-     *
-     * Total / Active / Expiring / Expired
      */
     private function buildSummaryCounts($data)
     {
@@ -192,22 +214,26 @@ class EmployeesController extends Controller
             ->where('employmentstatus', 'Active')
             ->count();
 
-        $expired = $data->filter(function ($e) {
-            return $e->visaend &&
-                Carbon::parse($e->visaend)->isPast();
+        $expired = $data->filter(function ($employee) {
+
+            return $employee->visaend &&
+                Carbon::parse($employee->visaend)->isPast();
+
         })->count();
 
-        $expiring = $data->filter(function ($e) {
-            if (!$e->visaend) {
+        $expiring = $data->filter(function ($employee) {
+
+            if (!$employee->visaend) {
                 return false;
             }
 
             $days = now()->diffInDays(
-                $e->visaend,
+                $employee->visaend,
                 false
             );
 
             return $days > 0 && $days <= 90;
+
         })->count();
 
         return compact(
@@ -218,6 +244,10 @@ class EmployeesController extends Controller
         );
     }
 
+
+    /**
+     * New employee form.
+     */
     public function new()
     {
         if (permission::permitted('employees-add') == 'fail') {
@@ -242,8 +272,10 @@ class EmployeesController extends Controller
         );
     }
 
+
     /**
-     * AJAX endpoint for departments by company.
+     * AJAX:
+     * Get departments belonging to selected company.
      */
     public function departmentsByCompany(Request $request)
     {
@@ -272,6 +304,24 @@ class EmployeesController extends Controller
         return response()->json($departments);
     }
 
+
+    /**
+     * Add employee.
+     *
+     * IMPORTANT:
+     *
+     * We create tbl_people first using insertGetId().
+     *
+     * The returned ID is then used directly as:
+     *
+     * tbl_company_data.reference
+     *
+     * This guarantees:
+     *
+     * tbl_people.id
+     *        =
+     * tbl_company_data.reference
+     */
     public function add(Request $request)
     {
         if (permission::permitted('employees-add') == 'fail') {
@@ -279,29 +329,48 @@ class EmployeesController extends Controller
         }
 
         $v = $request->validate([
+
             'lastname' => 'required|alpha_dash_space|max:155',
             'firstname' => 'required|alpha_dash_space|max:155',
             'emailaddress' => 'required|email|max:155',
             'idno' => 'required|max:155',
-            'employmentstatus' => 'required|alpha_dash_space|max:155',
-            'company_id' => 'required|integer',
+
+            'employmentstatus' =>
+                'required|alpha_dash_space|max:155',
+
+            'company_id' =>
+                'required|integer',
 
             'jobtitle_id' =>
                 'nullable|integer|exists:tbl_form_jobtitle,id',
 
-            'address_line' => 'nullable|array',
-            'address_line.*' => 'nullable|string|max:500',
+            'address_line' =>
+                'nullable|array',
 
-            'address_from' => 'nullable|array',
-            'address_from.*' => 'nullable|date',
+            'address_line.*' =>
+                'nullable|string|max:500',
 
-            'address_to' => 'nullable|array',
-            'address_to.*' => 'nullable|date',
+            'address_from' =>
+                'nullable|array',
 
-            'doc_reference' => 'nullable|array',
-            'doc_reference.*' => 'nullable|string|max:255',
+            'address_from.*' =>
+                'nullable|date',
 
-            'address_doc' => 'nullable|array',
+            'address_to' =>
+                'nullable|array',
+
+            'address_to.*' =>
+                'nullable|date',
+
+            'doc_reference' =>
+                'nullable|array',
+
+            'doc_reference.*' =>
+                'nullable|string|max:255',
+
+            'address_doc' =>
+                'nullable|array',
+
             'address_doc.*' =>
                 'nullable|file|mimes:jpeg,jpg,png,pdf|max:4096',
 
@@ -312,10 +381,15 @@ class EmployeesController extends Controller
                 'nullable|required_with:sharecode|date',
         ]);
 
-        if (!table::company()
-            ->where('id', $request->company_id)
-            ->exists()) {
 
+        /*
+         * Validate company.
+         */
+        $companyRow = table::company()
+            ->where('id', $request->company_id)
+            ->first();
+
+        if (!$companyRow) {
             return redirect('employees-new')
                 ->withInput()
                 ->with(
@@ -324,32 +398,59 @@ class EmployeesController extends Controller
                 );
         }
 
-        $companyRow = table::company()
-            ->where('id', $request->company_id)
-            ->first();
+        $company = mb_strtoupper(
+            trim($companyRow->company)
+        );
 
-        $company = mb_strtoupper($companyRow->company);
         $companyId = $companyRow->id;
 
+
+        /*
+         * Validate job title.
+         */
         $jobtitleId = null;
 
         if ($request->filled('jobtitle_id')) {
+
             $jobtitleRow = table::jobtitle()
                 ->where('id', $request->jobtitle_id)
                 ->first();
 
-            $jobtitleId = $jobtitleRow
-                ? $jobtitleRow->id
-                : null;
+            if ($jobtitleRow) {
+                $jobtitleId = $jobtitleRow->id;
+            }
         }
 
-        $lastname = mb_strtoupper($request->lastname);
-        $firstname = mb_strtoupper($request->firstname);
-        $mi = mb_strtoupper($request->mi);
+
+        /*
+         * Prepare employee data.
+         */
+        $lastname = mb_strtoupper(
+            $request->lastname
+        );
+
+        $firstname = mb_strtoupper(
+            $request->firstname
+        );
+
+        $mi = mb_strtoupper(
+            $request->mi
+        );
+
         $age = $request->age;
-        $gender = mb_strtoupper($request->gender);
-        $emailaddress = mb_strtolower($request->emailaddress);
-        $civilstatus = mb_strtoupper($request->civilstatus);
+
+        $gender = mb_strtoupper(
+            $request->gender
+        );
+
+        $emailaddress = mb_strtolower(
+            $request->emailaddress
+        );
+
+        $civilstatus = mb_strtoupper(
+            $request->civilstatus
+        );
+
         $height = $request->height;
         $weight = $request->weight;
         $mobileno = $request->mobileno;
@@ -359,7 +460,9 @@ class EmployeesController extends Controller
             strtotime($request->birthday)
         );
 
-        $nationalid = mb_strtoupper($request->nationalid);
+        $nationalid = mb_strtoupper(
+            $request->nationalid
+        );
 
         $sharecode = $request->sharecode ?: null;
 
@@ -370,17 +473,35 @@ class EmployeesController extends Controller
             : null;
 
         $ni = $request->ni;
-        $birthplace = mb_strtoupper($request->birthplace);
-        $homeaddress = mb_strtoupper($request->homeaddress);
-        $department = mb_strtoupper($request->department);
-        $jobposition = mb_strtoupper($request->jobposition);
 
-        $companyemail = mb_strtolower($request->companyemail);
+        $birthplace = mb_strtoupper(
+            $request->birthplace
+        );
+
+        $homeaddress = mb_strtoupper(
+            $request->homeaddress
+        );
+
+        $department = mb_strtoupper(
+            $request->department
+        );
+
+        $jobposition = mb_strtoupper(
+            $request->jobposition
+        );
+
+        $companyemail = mb_strtolower(
+            $request->companyemail
+        );
+
         $leaveprivilege = $request->leaveprivilege;
 
-        $idno = mb_strtoupper($request->idno);
+        $idno = mb_strtoupper(
+            $request->idno
+        );
 
         $employmenttype = $request->employmenttype;
+
         $employmentstatus = $request->employmentstatus;
 
         $startdate = date(
@@ -395,12 +516,17 @@ class EmployeesController extends Controller
             )
             : null;
 
+
+        /*
+         * Prevent duplicate employee ID number.
+         */
         $is_idno_taken = table::companydata()
             ->where('idno', $idno)
             ->exists();
 
-        if ($is_idno_taken == 1) {
+        if ($is_idno_taken) {
             return redirect('employees-new')
+                ->withInput()
                 ->with(
                     'error',
                     trans(
@@ -409,18 +535,27 @@ class EmployeesController extends Controller
                 );
         }
 
-        // Store address documents.
+
+        /*
+         * Store address documents before DB transaction.
+         */
         $addressDocPaths = [];
 
         try {
+
             foreach (
                 $request->file('address_doc', [])
                 as $i => $docFile
             ) {
+
                 $addressDocPaths[$i] =
-                    $this->storeAddressDocument($docFile);
+                    $this->storeAddressDocument(
+                        $docFile
+                    );
             }
+
         } catch (\RuntimeException $e) {
+
             return redirect('employees-new')
                 ->withInput()
                 ->with(
@@ -429,6 +564,10 @@ class EmployeesController extends Controller
                 );
         }
 
+
+        /*
+         * Build address history.
+         */
         $addressEntries = $this->buildAddressEntries(
             $request->input('address_line', []),
             $request->input('address_from', []),
@@ -437,11 +576,20 @@ class EmployeesController extends Controller
             $addressDocPaths
         );
 
+
+        /*
+         * Store avatar.
+         */
+        $avatarPath = null;
+
         try {
+
             $avatarPath = $this->storeAvatarImage(
                 $request->file('image')
             );
+
         } catch (\RuntimeException $e) {
+
             return redirect('employees-new')
                 ->withInput()
                 ->with(
@@ -450,7 +598,14 @@ class EmployeesController extends Controller
                 );
         }
 
+
+        /*
+         * ==========================================================
+         * DATABASE TRANSACTION
+         * ==========================================================
+         */
         try {
+
             DB::transaction(function () use (
                 $lastname,
                 $firstname,
@@ -483,112 +638,241 @@ class EmployeesController extends Controller
                 $startdate,
                 $dateregularized,
                 $addressEntries,
-                $request,
-                &$refId
+                $request
             ) {
 
                 /*
-                 * Create employee first.
+                 * ==================================================
+                 * STEP 1:
+                 * INSERT INTO tbl_people
+                 *
+                 * IMPORTANT:
+                 * insertGetId() returns the ID generated by THIS
+                 * insert.
+                 *
+                 * DO NOT use:
+                 *
+                 * DB::getPdo()->lastInsertId()
+                 *
+                 * because that can use a different connection.
+                 * ==================================================
                  */
                 $refId = table::people()->insertGetId([
-                    'lastname' => $lastname,
-                    'firstname' => $firstname,
-                    'mi' => $mi,
-                    'age' => $age,
-                    'gender' => $gender,
-                    'emailaddress' => $emailaddress,
-                    'civilstatus' => $civilstatus,
-                    'height' => $height,
-                    'weight' => $weight,
-                    'mobileno' => $mobileno,
-                    'birthday' => $birthday,
-                    'birthplace' => $birthplace,
-                    'nationalid' => $nationalid,
-                    'sharecode' => $sharecode,
-                    'sharecode_expires_at' => $sharecodeexpiry,
-                    'NI' => $ni,
+
+                    'lastname' =>
+                        $lastname,
+
+                    'firstname' =>
+                        $firstname,
+
+                    'mi' =>
+                        $mi,
+
+                    'age' =>
+                        $age,
+
+                    'gender' =>
+                        $gender,
+
+                    'emailaddress' =>
+                        $emailaddress,
+
+                    'civilstatus' =>
+                        $civilstatus,
+
+                    'height' =>
+                        $height,
+
+                    'weight' =>
+                        $weight,
+
+                    'mobileno' =>
+                        $mobileno,
+
+                    'birthday' =>
+                        $birthday,
+
+                    'birthplace' =>
+                        $birthplace,
+
+                    'nationalid' =>
+                        $nationalid,
+
+                    'sharecode' =>
+                        $sharecode,
+
+                    'sharecode_expires_at' =>
+                        $sharecodeexpiry,
+
+                    'NI' =>
+                        $ni,
+
                     'idissuedate' =>
                         $this->toNullableDate(
                             $request->idissuedate
                         ),
+
                     'idexpirydate' =>
                         $this->toNullableDate(
                             $request->idexpirydate
                         ),
-                    'homeaddress' => $homeaddress,
-                    'employmenttype' => $employmenttype,
-                    'employmentstatus' => $employmentstatus,
-                    'avatar' => $avatarPath,
-                    'perhourpay' => $request->perhourpay,
-                    'accountpay' => $request->accountpay,
+
+                    'homeaddress' =>
+                        $homeaddress,
+
+                    'employmenttype' =>
+                        $employmenttype,
+
+                    'employmentstatus' =>
+                        $employmentstatus,
+
+                    'avatar' =>
+                        $avatarPath,
+
+                    'perhourpay' =>
+                        $request->perhourpay,
+
+                    'accountpay' =>
+                        $request->accountpay,
                 ]);
 
+
                 /*
-                 * Keep reference pointing to the actual
-                 * tbl_people.id for all NEW records.
+                 * ==================================================
+                 * STEP 2:
+                 * INSERT tbl_company_data
+                 *
+                 * THIS IS THE CRITICAL FIX.
+                 *
+                 * reference MUST be the newly-created
+                 * tbl_people.id.
+                 * ==================================================
                  */
                 table::companydata()->insert([
+
                     [
-                        'reference' => $refId,
-                        'company' => $company,
-                        'company_id' => $companyId,
-                        'jobtitle_id' => $jobtitleId,
-                        'department' => $department,
-                        'jobposition' => $jobposition,
-                        'companyemail' => $companyemail,
-                        'leaveprivilege' => $leaveprivilege,
-                        'jobduties' => $request->jobduties,
-                        'idno' => $idno,
+
+                        'reference' =>
+                            $refId,
+
+                        'company' =>
+                            $company,
+
+                        'company_id' =>
+                            $companyId,
+
+                        'jobtitle_id' =>
+                            $jobtitleId,
+
+                        'department' =>
+                            $department,
+
+                        'jobposition' =>
+                            $jobposition,
+
+                        'companyemail' =>
+                            $companyemail,
+
+                        'leaveprivilege' =>
+                            $leaveprivilege,
+
+                        'jobduties' =>
+                            $request->jobduties,
+
+                        'idno' =>
+                            $idno,
+
                         'visaend' =>
                             $this->toNullableDate(
                                 $request->visaend
                             ),
+
                         'visastart' =>
                             $this->toNullableDate(
                                 $request->visastart
                             ),
-                        'startdate' => $startdate,
-                        'jobtype' => $request->jobtype,
+
+                        'startdate' =>
+                            $startdate,
+
+                        'jobtype' =>
+                            $request->jobtype,
+
                         'COSCertificateNo' =>
                             $request->COSCertificateNo,
+
                         'cosexpiry' =>
                             $this->toNullableDate(
                                 $request->cosexpiry
                             ),
-                        'visastatus' => $request->visastatus,
-                        'kinno' => $request->kinno,
-                        'kinname' => $request->kinname,
-                        'workchecks' => $request->workchecks,
-                        'dateregularized' => $dateregularized,
-                    ],
+
+                        'visastatus' =>
+                            $request->visastatus,
+
+                        'kinno' =>
+                            $request->kinno,
+
+                        'kinname' =>
+                            $request->kinname,
+
+                        'workchecks' =>
+                            $request->workchecks,
+
+                        'dateregularized' =>
+                            $dateregularized,
+                    ]
+
                 ]);
 
+
                 /*
-                 * Address history.
+                 * ==================================================
+                 * STEP 3:
+                 * INSERT ADDRESS HISTORY
+                 *
+                 * Address history uses the SAME employee ID.
+                 * ==================================================
                  */
                 if (!empty($addressEntries)) {
+
                     $addressRows = [];
 
-                    foreach ($addressEntries as $entry) {
+                    foreach (
+                        $addressEntries as $entry
+                    ) {
+
                         $addressRows[] = [
-                            'reference' => $refId,
-                            'address_line' => $entry['address'],
+
+                            'reference' =>
+                                $refId,
+
+                            'address_line' =>
+                                $entry['address'],
+
                             'date_from' =>
                                 $entry['from']
                                     ? $entry['from']->format('Y-m-d')
                                     : null,
+
                             'date_to' =>
                                 $entry['to']
                                     ? $entry['to']->format('Y-m-d')
                                     : null,
+
                             'is_current' =>
                                 $entry['to'] === null,
+
                             'doc_reference' =>
                                 $entry['doc_reference'],
+
                             'doc_file' =>
                                 $entry['doc_file'],
-                            'created_at' => now(),
-                            'updated_at' => now(),
+
+                            'created_at' =>
+                                now(),
+
+                            'updated_at' =>
+                                now(),
                         ];
                     }
 
@@ -596,24 +880,37 @@ class EmployeesController extends Controller
                         ->insert($addressRows);
                 }
             });
+
+
         } catch (\Exception $e) {
 
+            /*
+             * If DB transaction fails, remove uploaded files.
+             */
             if ($avatarPath) {
+
                 Storage::disk('public')
                     ->delete($avatarPath);
             }
 
             foreach ($addressDocPaths as $path) {
+
                 if ($path) {
+
                     Storage::disk('public')
                         ->delete($path);
                 }
             }
 
+
+            /*
+             * Log real database error.
+             */
             \Log::error(
                 'Failed to add employee: ' .
                 $e->getMessage()
             );
+
 
             return redirect('employees-new')
                 ->withInput()
@@ -625,38 +922,55 @@ class EmployeesController extends Controller
                 );
         }
 
+
         return redirect('employees')
             ->with(
                 'success',
-                trans("New employee has been added!")
+                trans(
+                    "New employee has been added!"
+                )
             );
     }
 
+
+    /**
+     * Store employee avatar.
+     */
     private function storeAvatarImage($file)
     {
         if (!$file) {
             return null;
         }
 
+        /*
+         * Verify the actual image contents.
+         */
         if (
             @getimagesize(
                 $file->getRealPath()
             ) === false
         ) {
+
             throw new \RuntimeException(
                 'The uploaded file is not a valid image.'
             );
         }
+
 
         $extension = strtolower(
             $file->getClientOriginalExtension()
                 ?: $file->extension()
         );
 
+
+        /*
+         * Never trust the original filename.
+         */
         $filename =
-            Str::uuid()->toString() .
-            '.' .
-            $extension;
+            Str::uuid()->toString()
+            . '.'
+            . $extension;
+
 
         return $file->storeAs(
             'avatars',
@@ -665,6 +979,10 @@ class EmployeesController extends Controller
         );
     }
 
+
+    /**
+     * Store address supporting document.
+     */
     private function storeAddressDocument($file)
     {
         if (!$file) {
@@ -676,10 +994,12 @@ class EmployeesController extends Controller
                 ?: $file->extension()
         );
 
+
         $filename =
-            Str::uuid()->toString() .
-            '.' .
-            $extension;
+            Str::uuid()->toString()
+            . '.'
+            . $extension;
+
 
         return $file->storeAs(
             'address-documents',
@@ -688,6 +1008,10 @@ class EmployeesController extends Controller
         );
     }
 
+
+    /**
+     * Build address history rows.
+     */
     private function buildAddressEntries(
         array $addressLines,
         array $dateFrom,
@@ -695,15 +1019,25 @@ class EmployeesController extends Controller
         array $docReferences = [],
         array $docFilePaths = []
     ) {
+
         $entries = [];
 
-        foreach ($addressLines as $i => $line) {
+        foreach (
+            $addressLines as $i => $line
+        ) {
 
-            $line = trim((string) $line);
+            $line = trim(
+                (string) $line
+            );
 
+
+            /*
+             * Ignore blank address lines.
+             */
             if ($line === '') {
                 continue;
             }
+
 
             $from = !empty($dateFrom[$i])
                 ? Carbon::parse(
@@ -711,13 +1045,16 @@ class EmployeesController extends Controller
                 )->startOfDay()
                 : null;
 
+
             $to = !empty($dateTo[$i])
                 ? Carbon::parse(
                     $dateTo[$i]
                 )->startOfDay()
                 : null;
 
+
             $entries[] = [
+
                 'address' =>
                     mb_strtoupper($line),
 
@@ -728,7 +1065,8 @@ class EmployeesController extends Controller
                     $to,
 
                 'doc_reference' =>
-                    isset($docReferences[$i]) &&
+                    isset($docReferences[$i])
+                    &&
                     trim(
                         (string) $docReferences[$i]
                     ) !== ''
@@ -744,9 +1082,14 @@ class EmployeesController extends Controller
             ];
         }
 
+
         return $entries;
     }
 
+
+    /**
+     * Convert date input to nullable Y-m-d.
+     */
     private function toNullableDate($value)
     {
         if (empty($value)) {
