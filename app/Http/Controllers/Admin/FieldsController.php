@@ -32,6 +32,33 @@ class FieldsController extends Controller
       return view('admin.fields.company', compact('data', 'documents'));
     }
 
+    /**
+     * IMPORTANT — DO NOT TRUST insertGetId()'S RETURN VALUE HERE:
+     *
+     * insertGetId() internally still ends up calling
+     * $connection->getPdo()->lastInsertId(), which is connection-scoped,
+     * not statement-scoped. Something elsewhere in this app performs its
+     * own synchronous INSERT into another table (tbl_activity_logs -
+     * confirmed via information_schema while chasing an identical bug in
+     * EmployeesController@add) as a side effect of ordinary queries. If
+     * that fires between this insert and Laravel reading the id back,
+     * $refId silently becomes an unrelated activity_logs id instead of
+     * the new company's real tbl_form_company.id - and every document
+     * uploaded alongside it gets tagged with that wrong id.
+     *
+     * Workaround: after inserting, re-select the row using the exact
+     * values we just inserted, ordered by id DESC. This is only a
+     * best-effort recovery since 'company'/'licenceNo' aren't currently
+     * validated as unique - if two companies could ever share the exact
+     * same company+address+licenceNo, this could pick the wrong one.
+     * Adding a real unique column (licenceNo is the natural candidate)
+     * and validating it as such would make this airtight.
+     *
+     * TODO: find and fix the actual synchronous activity logger (search
+     * for DB::listen(), ActivityLog, or an Observer bound in
+     * AppServiceProvider::boot()) so insertGetId() can be trusted again
+     * everywhere and this workaround can be removed.
+     */
     public function addCompany(Request $request)
     {
       if (permission::permitted('company-add')=='fail'){ return redirect()->route('denied'); }
@@ -45,6 +72,8 @@ class FieldsController extends Controller
       ]);
 
       $company = mb_strtoupper($request->company);
+      $address = $request->address;
+      $licenceNo = $request->licenceNo;
 
       $docStoredPaths = [];
       try {
@@ -58,23 +87,25 @@ class FieldsController extends Controller
       $refId = null;
 
       try {
-        DB::transaction(function () use ($company, $request, $docStoredPaths, &$refId) {
-          // FIX: previously this was table::company()->insert([...])
-          // followed by $refId = DB::getPdo()->lastInsertId(). That reads
-          // the *default* connection's PDO handle, which isn't guaranteed
-          // to reflect what table::company() just inserted (and can be
-          // clobbered by a concurrent request's insert landing between the
-          // two calls). insertGetId() inserts and reads the new id back on
-          // the same query builder/connection in one call, so $refId is
-          // always the id of the company row we just created here - which
-          // is what every uploaded document below gets tagged with via
-          // company_id. A wrong $refId here means the new company's
-          // documents silently attach to a different company.
-          $refId = table::company()->insertGetId([
+        DB::transaction(function () use ($company, $address, $licenceNo, $request, $docStoredPaths, &$refId) {
+          table::company()->insertGetId([
             'company' => $company,
-            'address' => $request->address,
-            'licenceNo' => $request->licenceNo,
+            'address' => $address,
+            'licenceNo' => $licenceNo,
           ]);
+
+          // Recover the real id - see class/method docblock above for why
+          // insertGetId()'s own return value can't be trusted here.
+          $refId = table::company()
+            ->where('company', $company)
+            ->where('address', $address)
+            ->where('licenceNo', $licenceNo)
+            ->orderByDesc('id')
+            ->value('id');
+
+          if (!$refId) {
+            throw new \RuntimeException('Could not recover the new company record after insert.');
+          }
 
           $labels = $request->input('doc_label', []);
           $docRows = [];
