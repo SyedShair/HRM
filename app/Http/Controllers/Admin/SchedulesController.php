@@ -336,127 +336,88 @@ class SchedulesController extends Controller
 
     /**
      * GET /today-shifts
-     * Live "who's on shift today" board used to take attendance. Was
-     * previously showing inaccurate results for several stacked reasons
-     * - all fixed below:
-     *
-     *  1. No `archive = '0'` filter on tbl_people_schedules, so an
-     *     employee whose schedule had since been archived (they left,
-     *     or the schedule was superseded by a new one) still showed up
-     *     as scheduled to work today.
-     *  2. No join back to tbl_people / employmentstatus filter, so an
-     *     employee who left without their schedule ever being archived
-     *     would still appear.
-     *  3. "Today" was computed with now()'s default server timezone,
-     *     which may not be Europe/London - the attendance modal's own
-     *     JS explicitly re-adjusts to UK-local time, which is a strong
-     *     sign the two were drifting apart near midnight/DST changes.
-     *     Anchored below to config('app.timezone') instead (set that to
-     *     'Europe/London' in config/app.php if it isn't already).
-     *  4. $todayAttendance was fetched but never actually used - the
-     *     blade instead ran a fresh "is this employee present" query
-     *     PER ROW (an N+1 query problem). Presence is now resolved once
-     *     here and attached to each shift as ->isPresent.
-     *  5. No permission check at all, unlike every other method on this
-     *     controller - added the same gate rota() uses; change the
-     *     permission key below if this page has its own dedicated one.
-     *  6. No `->distinct()` - guards against duplicate rows for legacy
-     *     data saved before the overlap check existed elsewhere in this
-     *     controller.
-     *  7. The displayed employee name came from s.employee - a text
-     *     snapshot written once when the schedule was saved and never
-     *     refreshed - while the "Make Attendance" button submitted
-     *     s.reference (the actual id). If a name changed after the
-     *     schedule was created, those two could disagree: the row
-     *     showed one name but attendance was recorded against whoever
-     *     s.reference really was. Now both the name and the id are
-     *     selected from the same live tbl_people row, so they can't
-     *     drift apart.
+     * Live "who's on shift today" board used to take attendance.
+     * Filterable by ?company_id=, same convention as /staff-rota and
+     * the weekly dashboard.
      */
-   /**
- * GET /today-shifts
- * Live "who's on shift today" board used to take attendance.
- * Filterable by ?company_id=, same convention as /staff-rota and
- * the weekly dashboard.
- */
-public function todayShifts(Request $request)
-{
-    if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
+    public function todayShifts(Request $request)
+    {
+        if (permission::permitted('schedules-add') == 'fail') { return redirect()->route('denied'); }
 
-    $companies = table::company()->orderBy('company')->get();
+        $companies = table::company()->orderBy('company')->get();
 
-    $companyId = $request->query('company_id');
-    $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
+        $companyId = $request->query('company_id');
+        $companyId = ($companyId !== null && is_numeric($companyId)) ? (int) $companyId : null;
 
-    if (!$companyId && $companies->isNotEmpty()) {
-        $companyId = $companies->first()->id;
+        if (!$companyId && $companies->isNotEmpty()) {
+            $companyId = $companies->first()->id;
+        }
+
+        // Anchor everything "today" to a single Carbon instance in the
+        // app's configured timezone, so the day name, the date, and the
+        // "is this shift running right now" check in the view can never
+        // disagree with each other.
+        $now = Carbon::now(config('app.timezone'));
+        $todayDay  = $now->format('l');
+        $todayDate = $now->format('Y-m-d');
+        $nowTime   = $now->format('H:i'); // matches the H:i format time_in/time_out are stored/validated in
+
+        $shiftsQuery = DB::table('tbl_people_schedules as s')
+            ->join('weekly_shifts as w', 's.id', '=', 'w.schedual_id')
+            ->join('tbl_people as p', 'p.id', '=', 's.reference')
+            ->join('tbl_company_data as cd', 'cd.reference', '=', 'p.id')
+            ->where('w.day', $todayDay)
+            ->where('w.active', 1)
+            // Archived schedules must never surface on today's shift board.
+            ->where('s.archive', '0')
+            // Only currently-active employees.
+            ->where('p.employmentstatus', 'Active')
+            ->where(function ($q) use ($todayDate) {
+                $q->whereDate('s.datefrom', '<=', $todayDate)
+                  ->where(function ($q2) use ($todayDate) {
+                      $q2->whereDate('s.dateto', '>=', $todayDate)
+                         ->orWhereNull('s.dateto');
+                  });
+            })
+            // Company scoping - same convention used across the rest of
+            // this controller (staff-rota, weekly dashboard, monthly rota).
+            ->when($companyId, fn ($q) => $q->where('cd.company_id', $companyId))
+            // IMPORTANT: the displayed name is built live from tbl_people
+            // (p.firstname/p.lastname) instead of reading s.employee - a
+            // text snapshot written once when the schedule was created/
+            // last edited and never touched again. Pulling both the name
+            // and the id from the same joined p.* row makes it impossible
+            // for the displayed name and the id "Make Attendance" submits
+            // to disagree.
+            ->selectRaw("CONCAT(p.lastname, ', ', p.firstname) as employee")
+            ->addSelect('p.id as reference', 'w.day', 'w.time_in', 'w.time_out', 'w.is_off')
+            ->distinct()
+            ->orderBy('p.lastname')
+            ->orderBy('p.firstname');
+
+        $shifts = $shiftsQuery->get();
+
+        $todayAttendance = DB::table('tbl_people_attendance')
+            ->where('date', $todayDate)
+            ->get();
+
+        $presentReferences = $todayAttendance->pluck('reference')->all();
+
+        $shifts->transform(function ($shift) use ($presentReferences) {
+            $shift->isPresent = in_array($shift->reference, $presentReferences);
+            return $shift;
+        });
+
+        return view('today_shift', compact(
+            'shifts',
+            'todayDay',
+            'todayDate',
+            'nowTime',
+            'todayAttendance',
+            'companies',
+            'companyId'
+        ));
     }
-
-    // Anchor everything "today" to a single Carbon instance in the
-    // app's configured timezone, so the day name, the date, and the
-    // "is this shift running right now" check in the view can never
-    // disagree with each other.
-    $now = Carbon::now(config('app.timezone'));
-    $todayDay  = $now->format('l');
-    $todayDate = $now->format('Y-m-d');
-    $nowTime   = $now->format('H:i'); // matches the H:i format time_in/time_out are stored/validated in
-
-    $shiftsQuery = DB::table('tbl_people_schedules as s')
-        ->join('weekly_shifts as w', 's.id', '=', 'w.schedual_id')
-        ->join('tbl_people as p', 'p.id', '=', 's.reference')
-        ->join('tbl_company_data as cd', 'cd.reference', '=', 'p.id')
-        ->where('w.day', $todayDay)
-        ->where('w.active', 1)
-        // Archived schedules must never surface on today's shift board.
-        ->where('s.archive', '0')
-        // Only currently-active employees.
-        ->where('p.employmentstatus', 'Active')
-        ->where(function ($q) use ($todayDate) {
-            $q->whereDate('s.datefrom', '<=', $todayDate)
-              ->where(function ($q2) use ($todayDate) {
-                  $q2->whereDate('s.dateto', '>=', $todayDate)
-                     ->orWhereNull('s.dateto');
-              });
-        })
-        // Company scoping - same convention used across the rest of
-        // this controller (staff-rota, weekly dashboard, monthly rota).
-        ->when($companyId, fn ($q) => $q->where('cd.company_id', $companyId))
-        // IMPORTANT: the displayed name is built live from tbl_people
-        // (p.firstname/p.lastname) instead of reading s.employee - a
-        // text snapshot written once when the schedule was created/
-        // last edited and never touched again. Pulling both the name
-        // and the id from the same joined p.* row makes it impossible
-        // for the displayed name and the id "Make Attendance" submits
-        // to disagree.
-        ->selectRaw("CONCAT(p.lastname, ', ', p.firstname) as employee")
-        ->addSelect('p.id as reference', 'w.day', 'w.time_in', 'w.time_out', 'w.is_off')
-        ->distinct()
-        ->orderBy('p.lastname')
-        ->orderBy('p.firstname');
-
-    $shifts = $shiftsQuery->get();
-
-    $todayAttendance = DB::table('tbl_people_attendance')
-        ->where('date', $todayDate)
-        ->get();
-
-    $presentReferences = $todayAttendance->pluck('reference')->all();
-
-    $shifts->transform(function ($shift) use ($presentReferences) {
-        $shift->isPresent = in_array($shift->reference, $presentReferences);
-        return $shift;
-    });
-
-    return view('today_shift', compact(
-        'shifts',
-        'todayDay',
-        'todayDate',
-        'nowTime',
-        'todayAttendance',
-        'companies',
-        'companyId'
-    ));
-}
 
     /**
      * GET /rota/pdf/{id}
@@ -820,11 +781,56 @@ public function todayShifts(Request $request)
         ];
 
         if ($existingSchedule) {
+            // update() path - $existingSchedule->id was already fetched
+            // from a plain SELECT earlier in update(), so it's immune to
+            // the insertGetId()/lastInsertId() bug below. This is exactly
+            // why "update works but add doesn't".
             table::schedules()->where('id', $existingSchedule->id)->update($scheduleAttributes);
             $scheduleId = $existingSchedule->id;
             table::weeklyshifts()->where('schedual_id', $scheduleId)->delete();
         } else {
-            $scheduleId = table::schedules()->insertGetId($scheduleAttributes);
+            /*
+             * IMPORTANT — DO NOT TRUST insertGetId()'S RETURN VALUE HERE:
+             *
+             * Same bug as EmployeesController::add() and
+             * FieldsController::addCompany() - insertGetId() ultimately
+             * reads back the connection-scoped LAST_INSERT_ID(), which
+             * something elsewhere in this app clobbers via a synchronous
+             * INSERT into tbl_activity_logs. When that fires here, the
+             * "new" schedule id below silently becomes a wrong/unrelated
+             * value - so every row in $shiftRows further down gets tagged
+             * with the wrong schedual_id (the schedule row is saved
+             * correctly, but its weekly_shifts end up detached from it,
+             * showing as if the employee has no working hours at all),
+             * and RotaMailer::send() in add() gets called with the wrong
+             * schedule id too.
+             *
+             * Workaround: re-select the row we just inserted by its
+             * reference+datefrom+dateto+archive combination. This is safe
+             * specifically because add() already runs an overlap check
+             * before calling saveSchedule() that guarantees no other
+             * un-archived schedule for this employee shares this date
+             * range - so this combination can only match the row we just
+             * created.
+             *
+             * TODO: find and fix the actual synchronous activity logger
+             * (search for DB::listen(), ActivityLog, or an Observer bound
+             * in AppServiceProvider::boot()) so insertGetId() can be
+             * trusted again everywhere and this workaround can be removed.
+             */
+            table::schedules()->insertGetId($scheduleAttributes);
+
+            $scheduleId = table::schedules()
+                ->where('reference', $employee->id)
+                ->where('datefrom', $request->datefrom)
+                ->where('dateto', $request->dateto)
+                ->where('archive', '0')
+                ->orderByDesc('id')
+                ->value('id');
+
+            if (!$scheduleId) {
+                throw new \RuntimeException('Could not recover the new schedule record after insert.');
+            }
         }
 
         $shiftRows = [];
