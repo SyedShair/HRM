@@ -1,7 +1,10 @@
 @extends('layouts.default')
-
+ @php
+    $appSettings = \App\Classes\table::settings()->where('id', 1)->first();
+    $appName = !empty($appSettings->app_name) ? $appSettings->app_name : 'Company';
+@endphp
 @section('meta')
-    <title>Meetings | Jpingos</title>
+    <title>Meetings | {{ $appName }}</title>
     <meta name="description" content="Schedule and manage Zoom meetings for employees and outside guests">
 @endsection
 
